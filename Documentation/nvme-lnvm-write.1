@@ -1,0 +1,216 @@
+'\" t
+.\"     Title: nvme-lnvm-write
+.\"    Author: [FIXME: author] [see http://docbook.sf.net/el/author]
+.\" Generator: DocBook XSL Stylesheets v1.76.1 <http://docbook.sf.net/>
+.\"      Date: 02/07/2015
+.\"    Manual: \ \&
+.\"    Source: \ \&
+.\"  Language: English
+.\"
+.TH "NVME\-LNVM\-WRITE" "1" "02/07/2015" "\ \&" "\ \&"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+nvme-lnvm-write \- Write a single block to LightNvm namespace, returns applicable results\&.
+.SH "SYNOPSIS"
+.sp
+.nf
+\fInvme\-lnvm\-write\fR <device> [\-\-namespace\-id=<nsid> | \-n <nsid>]
+                         [\-\-start\-block=<slba> | \-s <slba>]
+                         [\-\-block\-count=<nlb> | \-c <nlb>]
+                         [\-\-data\-size=<size> | \-z <size>]
+                         [\-\-data=<data\-file> | \-d <data\-file>]
+                         [\-\-prinfo=<prinfo> | \-p <prinfo>]
+                         [\-\-limited\-retry | \-l]
+                         [\-\-force\-unit\-access | \-f]
+                         [\-\-incompressible | \-i]
+                         [\-\-sequential\-request | \-r]
+                         [\-\-access\-latency=<latency> | \-d <latency>]
+                         [\-\-access\-frequency=<freq> | \-p <freq>]
+.fi
+.SH "DESCRIPTION"
+.sp
+The Write command writes the logical blocks specified by the command to the medium\&.
+.SH "OPTIONS"
+.PP
+\-n <nsid>, \-\-namespace\-id=<nsid>
+.RS 4
+Write the data to the given nsid namespace\&.
+.RE
+.PP
+\-s <slba>, \-\-start\-block=<slba>
+.RS 4
+Start logical block\&.
+.RE
+.PP
+\-c <nlb>, \-\-block\-count=<nlb>
+.RS 4
+Logical block count\&.
+.RE
+.PP
+\-z <size>, \-\-data\-size=<size>
+.RS 4
+Number of bytes data will be written to the medium\&. The size is no more than 4096\&.
+.RE
+.PP
+\-d <data\-file>, \-\-data=<data\-file>
+.RS 4
+File to store data written to the mediun\&.
+.RE
+.PP
+\-p <prinfo>, \-\-prinfo=<prinfo>
+.RS 4
+Protection information\&. This is optional\&.
+.RE
+.PP
+\-l, \-\-limited\-retry
+.RS 4
+If set to
+\fI1\fR, the controller should apply limited retry efforts\&. If cleaned to
+\fI0\fR, the controller should apply all available error recovery means to write the data to the NVM\&. This is optional\&.
+.RE
+.PP
+\-f, \-\-force\-unit\-access
+.RS 4
+If set to
+\fI1\fR, data should be written to non\-volatile media before indicating command completion\&. This is optional\&.
+.RE
+.PP
+\-i, \-\-incompressible
+.RS 4
+If set to
+\fI1\fR, data is not compressible for the logical blocks indicated\&. If cleaned to
+\fI0\fR, then no information on compression is provided\&. This is optional\&.
+.RE
+.PP
+\-r, \-\-sequential\-request
+.RS 4
+If set to
+\fI1\fR, this command is part of a sequential write that includes multiple Write command\&. If cleaned to
+\fI0\fR, then no information on sequential access is provided\&. This is optional\&.
+.RE
+.PP
+\-d <latency>, \-\-access\-latency=<latency>
+.RS 4
+Access latency\&. This is optional\&.
+.TS
+allbox tab(:);
+lt lt
+lt lt
+lt lt
+lt lt
+lt lt.
+T{
+Latency
+T}:T{
+Description
+T}
+T{
+0
+T}:T{
+None\&. No latency information provided\&.
+T}
+T{
+1
+T}:T{
+Idle\&. Longer latency acceptable\&.
+T}
+T{
+2
+T}:T{
+Normal\&. Typical latency\&.
+T}
+T{
+3
+T}:T{
+Low\&. Smallest possible latency\&.
+T}
+.TE
+.sp 1
+.RE
+.PP
+\-p <freq>, \-\-access\-frequency=<freq>
+.RS 4
+Access frequency\&. This is optional\&.
+.TS
+allbox tab(:);
+lt lt
+lt lt
+lt lt
+lt lt
+lt lt
+lt lt
+lt lt
+lt lt
+lt lt.
+T{
+Freq
+T}:T{
+Description
+T}
+T{
+0
+T}:T{
+No frequency information provided\&.
+T}
+T{
+1
+T}:T{
+Typical number of reads and writes expected for the LBA range\&.
+T}
+T{
+2
+T}:T{
+Infrequent writes and infrequent reads to the LBA range indicated\&.
+T}
+T{
+3
+T}:T{
+Infrequent writes and frequent reads to the LBA range indicated\&.
+T}
+T{
+4
+T}:T{
+Frequent writes and infrequent reads to the LBA range indicated\&.
+T}
+T{
+5
+T}:T{
+Frequent writes and frequent reads to the LBA range indicated\&.
+T}
+T{
+6
+T}:T{
+One time write\&.
+T}
+T{
+7\-15
+T}:T{
+Reserved\&.
+T}
+.TE
+.sp 1
+.RE
+.SH "EXAMPLES"
+.sp
+No examples yet\&.
+.SH "NVME"
+.sp
+Part of the nvme\-user suite

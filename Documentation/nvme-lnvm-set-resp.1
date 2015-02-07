@@ -1,0 +1,165 @@
+'\" t
+.\"     Title: nvme-lnvm-set-resp
+.\"    Author: [FIXME: author] [see http://docbook.sf.net/el/author]
+.\" Generator: DocBook XSL Stylesheets v1.76.1 <http://docbook.sf.net/>
+.\"      Date: 02/07/2015
+.\"    Manual: \ \&
+.\"    Source: \ \&
+.\"  Language: English
+.\"
+.TH "NVME\-LNVM\-SET\-RES" "1" "02/07/2015" "\ \&" "\ \&"
+.\" -----------------------------------------------------------------
+.\" * Define some portability stuff
+.\" -----------------------------------------------------------------
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.\" http://bugs.debian.org/507673
+.\" http://lists.gnu.org/archive/html/groff/2009-02/msg00013.html
+.\" ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+.ie \n(.g .ds Aq \(aq
+.el       .ds Aq '
+.\" -----------------------------------------------------------------
+.\" * set default formatting
+.\" -----------------------------------------------------------------
+.\" disable hyphenation
+.nh
+.\" disable justification (adjust text to left margin only)
+.ad l
+.\" -----------------------------------------------------------------
+.\" * MAIN CONTENT STARTS HERE *
+.\" -----------------------------------------------------------------
+.SH "NAME"
+nvme-lnvm-set-resp \- Sets responsibility of LightNvm namespace, returns applicable results\&.
+.SH "SYNOPSIS"
+.sp
+.nf
+\fInvme\-lnvm\-set\-resp\fR <device> [\-\-namespace\-id=<nsid> | \-n <nsid>]
+                            [\-\-l2pmapping=<value> | \-l <value>]
+                            [\-\-p2lmapping=<value> | \-p <value>]
+                            [\-\-handlegc=<value> | \-g <value>]
+                            [\-\-handleecc=<value> | \-e <value>]
+.fi
+.SH "DESCRIPTION"
+.sp
+Submits an LightNvm Set Responsibility admin command and returns the applicable results\&.
+.sp
+The <device> parameter is mandatory and may be either the NVMe character device (ex: /dev/nvme0), or a namespace block device (ex: /dev/nvme0n1)\&.
+.SH "OPTIONS"
+.PP
+\-n <nsid>, \-\-namespace\-id=<nsid>
+.RS 4
+Set the responsibility for the given nsid\&.
+.RE
+.PP
+\-l <value>, \-\-l2pmapping=<value>
+.RS 4
+Set who handle translation to logical to physical address mapping\&.
+.TS
+allbox tab(:);
+lt lt
+lt lt
+lt lt.
+T{
+Value
+T}:T{
+Description
+T}
+T{
+0
+T}:T{
+Handled on host\-side
+T}
+T{
+1
+T}:T{
+Handled on device\-side
+T}
+.TE
+.sp 1
+.RE
+.PP
+\-p <value>, \-\-p2lmapping=<value>
+.RS 4
+Set who handle translation to physical to logical address mapping\&.
+.TS
+allbox tab(:);
+lt lt
+lt lt
+lt lt.
+T{
+Value
+T}:T{
+Description
+T}
+T{
+0
+T}:T{
+Handled on host\-side
+T}
+T{
+1
+T}:T{
+Handled on device\-side
+T}
+.TE
+.sp 1
+.RE
+.PP
+\-g <value>, \-\-handlegc=<value>
+.RS 4
+Set who handle garbage collection of blocks\&.
+.TS
+allbox tab(:);
+lt lt
+lt lt
+lt lt.
+T{
+Value
+T}:T{
+Description
+T}
+T{
+0
+T}:T{
+Handled on host\-side
+T}
+T{
+1
+T}:T{
+Handled on device\-side
+T}
+.TE
+.sp 1
+.RE
+.PP
+\-e <value>, \-\-handleecc=<value>
+.RS 4
+Set who handle ECC\&.
+.TS
+allbox tab(:);
+lt lt
+lt lt
+lt lt.
+T{
+Value
+T}:T{
+Description
+T}
+T{
+0
+T}:T{
+Handled on host\-side
+T}
+T{
+1
+T}:T{
+Handled on device\-side
+T}
+.TE
+.sp 1
+.RE
+.SH "EXAMPLES"
+.sp
+No examples yet\&.
+.SH "NVME"
+.sp
+Part of the nvme\-user suite

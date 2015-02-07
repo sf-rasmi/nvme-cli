@@ -1,0 +1,34 @@
+nvme-lnvm-get-features(1)
+=========================
+
+NAME
+----
+nvme-lnvm-get-features - Gets features of LightNvm namespace, returns 
+applicable results.
+
+SYNOPSIS
+--------
+[verse]
+'nvme-lnvm-get-features' <device> [--namespace-id=<nsid> | -n <nsid>]
+
+DESCRIPTION
+-----------
+Submits an LightNvm Get Features admin command and returns the applicable
+results.
+
+The <device> parameter is mandatory and may be either the NVMe character
+device (ex: /dev/nvme0), or a namespace block device (ex: /dev/nvme0n1).
+
+OPTIONS
+-------
+-n <nsid>::
+--namespace-id=<nsid>::
+	Retrieve the features for the given nsid.
+
+EXAMPLES
+--------
+No examples yet.
+
+NVME
+----
+Part of the nvme-user suite

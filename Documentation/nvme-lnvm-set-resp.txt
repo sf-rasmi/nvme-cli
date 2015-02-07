@@ -1,0 +1,82 @@
+nvme-lnvm-set-resp(1)
+=====================
+
+NAME
+----
+nvme-lnvm-set-resp - Sets responsibility of LightNvm namespace, returns 
+applicable results.
+
+SYNOPSIS
+--------
+[verse]
+'nvme-lnvm-set-resp' <device> [--namespace-id=<nsid> | -n <nsid>]
+			    [--l2pmapping=<value> | -l <value>]
+			    [--p2lmapping=<value> | -p <value>]
+			    [--handlegc=<value> | -g <value>]
+			    [--handleecc=<value> | -e <value>]
+
+DESCRIPTION
+-----------
+Submits an LightNvm Set Responsibility admin command and returns the applicable
+results.
+
+The <device> parameter is mandatory and may be either the NVMe character
+device (ex: /dev/nvme0), or a namespace block device (ex: /dev/nvme0n1).
+
+OPTIONS
+-------
+-n <nsid>::
+--namespace-id=<nsid>::
+	Set the responsibility for the given nsid.
+
+-l <value>::
+--l2pmapping=<value>::
+	Set who handle translation to logical to physical address mapping.
++
+[]
+|==================
+|Value|Description
+|0|Handled on host-side 
+|1|Handled on device-side 
+|==================
+
+-p <value>::
+--p2lmapping=<value>::
+	Set who handle translation to physical to logical address mapping.
++
+[]
+|==================
+|Value|Description
+|0|Handled on host-side 
+|1|Handled on device-side 
+|==================
+
+-g <value>::
+--handlegc=<value>::
+	Set who handle garbage collection of blocks.
++
+[]
+|==================
+|Value|Description
+|0|Handled on host-side 
+|1|Handled on device-side 
+|==================
+
+-e <value>::
+--handleecc=<value>::
+	Set who handle ECC.
++
+[]
+|==================
+|Value|Description
+|0|Handled on host-side 
+|1|Handled on device-side 
+|==================
+
+EXAMPLES
+--------
+No examples yet.
+
+NVME
+----
+Part of the nvme-user suite

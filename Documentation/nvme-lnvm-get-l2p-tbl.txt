@@ -1,0 +1,45 @@
+nvme-lnvm-get-l2p-tbl(1)
+========================
+
+NAME
+----
+nvme-lnvm-get-l2p-tbl - Gets logical to physical translation table of LightNvm 
+namespace, returns applicable results
+
+SYNOPSIS
+--------
+[verse]
+'nvme-lnvm-get-l2p-tbl' <device> [--namespace-id=<nsid> | -n <nsid>]
+			       [--start-block=<slba> | -s <slba>]
+			       [--block-count=<nlb> | -c <nlb>]
+
+DESCRIPTION
+-----------
+Submits an LightNvm Get Logical to Physical Translation Table admin command 
+and returns the applicable results.
+
+The <device> parameter is mandatory and may be either the NVMe character
+device (ex: /dev/nvme0), or a namespace block device (ex: /dev/nvme0n1).
+
+OPTIONS
+-------
+-n <nsid>::
+--namespace-id=<nsid>::
+	Get the logical to physical table for the given nsid.
+
+-s <slba>::
+--start-block=<slba>::
+	Start logical block.
+
+-c <nlb>::
+--block-count=<nlb>::
+	Logical block count. 
+	The count is no more than 4096.
+
+EXAMPLES
+--------
+No examples yet.
+
+NVME
+----
+Part of the nvme-user suite

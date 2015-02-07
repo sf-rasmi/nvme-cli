@@ -71,6 +71,11 @@ static const char *devicename;
 	ENTRY(READ_CMD, "read", "Submit a read command, return results", read_cmd) \
 	ENTRY(WRITE_CMD, "write", "Submit a write command, return results", write_cmd) \
 	ENTRY(REGISTERS, "show-regs", "Shows the controller registers. Requires admin character device", show_registers) \
+	ENTRY(LNVM_GET_FEATURES, "lnvm-get-features", "Get LightNvm feature, show results", lnvm_get_features) \
+	ENTRY(LNVM_SET_RESPONSIBILITY, "lnvm-set-resp", "Set LightNvm responsibility, show results", lnvm_set_responsibility) \
+	ENTRY(LNVM_GET_L2P_TABLE, "lnvm-get-l2p-tbl", "Get LightNvm Logical to Physical table, show results", lnvm_get_l2p_table) \
+	ENTRY(LNVM_READ, "lnvm-read", "Read a LightNvm page, show results", lnvm_read) \
+	ENTRY(LNVM_WRITE, "lnvm-write", "Write a LightNvm page, show results", lnvm_write) \
 	ENTRY(HELP, "help", "Display this help", help)
 
 #define ENTRY(i, n, h, f) \
@@ -345,6 +350,50 @@ static const char *nvme_status_to_string(__u32 status)
 	}
 }
 
+static int lnvm_identify(int namespace, void *ptr, int chnl_off)
+{
+	struct nvme_admin_cmd cmd;
+
+	memset(&cmd, 0, sizeof(cmd));
+	cmd.opcode = lnvm_admin_identify;
+	cmd.nsid = chnl_off;
+	cmd.addr = (unsigned long)ptr;
+	cmd.data_len = 4096;
+	return ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd);
+}
+
+static int lnvm_features(int opcode, int namespace, void *ptr, unsigned int length)
+{
+	struct nvme_admin_cmd cmd;
+
+	memset(&cmd, 0, sizeof(cmd));
+	cmd.opcode = opcode;
+	cmd.nsid = namespace;
+	cmd.addr = (unsigned long)ptr;
+	cmd.data_len = length;
+	return ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd);
+}
+
+static int lnvm_get_l2p_tbl(int namespace, unsigned long slba, unsigned int nlb,
+					unsigned short npages, void *ptr, unsigned int length)
+{
+	struct nvme_admin_cmd cmd;
+	struct nvme_lnvm_l2ptbl_command l2ptbl;
+
+	memset(&cmd, 0, sizeof(cmd));
+	memset(&l2ptbl, 0, sizeof(l2ptbl));
+	l2ptbl.opcode = lnvm_admin_get_l2p_tbl;
+	l2ptbl.nsid = namespace;
+	l2ptbl.slba = slba;
+	l2ptbl.nlb = nlb;
+	l2ptbl.prp1_len = npages;
+	l2ptbl.prp1 = (unsigned long)ptr;
+	memcpy(&cmd, &l2ptbl, sizeof(l2ptbl));
+	cmd.data_len = length;
+
+	return ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd);
+}
+
 static int identify(int namespace, void *ptr, int cns)
 {
 	struct nvme_admin_cmd cmd;
@@ -546,6 +595,28 @@ static void show_nvme_id_ns(struct nvme_id_ns *ns, int id, int vs)
 	if (vs) {
 		printf("vs[]:");
 		d(ns->vs, sizeof(ns->vs), 16, 1);
+	}
+}
+
+static void show_lnvm_channels(struct nvme_lnvm_id_chnl *chnl, unsigned num)
+{
+	int i;
+
+	for (i = 0; i < num; i++, chnl++) {
+		printf("laddr_begin    : %#llx\n", chnl->laddr_begin);
+		printf("laddr_end    : %#llx\n", chnl->laddr_end);
+		printf("oob_size    : %#x\n", chnl->oob_size);
+		printf("queue_size    : %d\n", chnl->queue_size);
+		printf("gran_read    : %d\n", chnl->gran_read);
+		printf("gran_write    : %d\n", chnl->gran_write);
+		printf("gran_erase    : %d\n", chnl->gran_erase);
+		printf("t_r    : %d\n", chnl->t_r);
+		printf("t_sqr    : %d\n", chnl->t_sqr);
+		printf("t_w    : %d\n", chnl->t_w);
+		printf("t_sqw    : %d\n", chnl->t_sqw);
+		printf("t_e    : %d\n", chnl->t_e);
+		printf("chnl_parallelism    : %d\n", chnl->chnl_parallelism);
+		printf("io_sched    : %#x\n", chnl->io_sched);
 	}
 }
 
@@ -794,6 +865,515 @@ static int id_ctrl(int argc, char **argv)
 	return err;
 }
 
+static int lnvm_id_ns(int nsid, unsigned int raw)
+{
+	unsigned char id_ns_buf[4096];
+	struct nvme_lnvm_id *id = (struct nvme_lnvm_id *)id_ns_buf;
+	unsigned short len = 0, end, off = 0;
+	int err;
+
+	while (1) {
+		err = lnvm_identify(nsid, id_ns_buf, off);
+		if (!err) {
+			if (off == 0) {
+				len = id->nchannels;
+			}
+			end = (len > NVME_LNVM_CHNLS_PR_REQ) ? NVME_LNVM_CHNLS_PR_REQ : len;
+			
+			if (raw) {
+				d_raw(id_ns_buf, sizeof(id_ns_buf));
+			}
+			else {
+				if (off == 0) {
+					printf("LightNvm Identify Namespace %d:\n", nsid);
+					printf("ver_id    : %#x\n", id->ver_id);
+					printf("nvm_type    : %#x\n", id->nvm_type);
+					printf("nchannels    : %d\n", id->nchannels);
+				}
+				show_lnvm_channels(id->chnls, end);
+			}
+
+			len -= end;
+			if (!len)
+				break;
+
+			off += end;
+		}
+		else if (err > 0) {
+			fprintf(stderr, "LightNvm Identify Status: %s NSID:%d\n", nvme_status_to_string(err), nsid);
+			break;
+		}
+	}
+
+	return err;
+}
+
+static int lnvm_get_features(int argc, char **argv)
+{
+	struct nvme_lnvm_features feat;
+	int opt, err, long_index = 0;
+	unsigned int nsid = 0;
+
+	static struct option opts[] = {
+		{"namespace-id", required_argument, 0, 'n'},
+		{0, 0, 0, 0 }
+	};
+
+	while ((opt = getopt_long(argc, (char **)argv, "n:", opts,
+							&long_index)) != -1) {
+		switch (opt) {
+		case 'n':
+			get_int(optarg, &nsid);
+			break;
+		default:
+			return EINVAL;
+		}
+	}
+	get_dev(optind, argc, argv);
+
+	err = lnvm_features(lnvm_admin_get_features, nsid, &feat, sizeof(feat));
+	if (!err) {
+		printf("LightNvm Get Features %d:\n", nsid);
+		printf("Drive performs translation of L2P address mapping    : %#llx\n",
+			(feat.responsibilities & LNVM_DRIVE_PERFORM_L2P));
+		printf("Drive does translation of L2P address mapping    : %#llx\n",
+			((feat.responsibilities & LNVM_DRIVE_DOES_L2P) >> 1));
+		printf("Drive handles garbage collection of blocks    : %#llx\n",
+			((feat.responsibilities & LNVM_DRIVE_HANDLE_GC) >> 2));
+		printf("Drive handles ECC    : %#llx\n",
+			((feat.responsibilities & LNVM_DRIVE_HANDLE_ECC) >> 3));
+		printf("Block Move    : %#llx\n",
+			(feat.extensions & LNVM_BLOCK_MOVE));
+		printf("NVM copy-back - End-to-end    : %#llx\n",
+			((feat.extensions & LNVM_COPY_BACK) >> 1));
+		printf("Device power-safe shutdown    : %#llx\n",
+			((feat.extensions & LNVM_POWERSAFE_SHUTDOWN) >> 2));
+	}
+	else if (err > 0) {
+		fprintf(stderr, "LightNvm Get Features Status: %s NSID:%d\n", nvme_status_to_string(err), nsid);
+	}
+
+	return err;
+}
+
+static int lnvm_set_responsibility(int argc, char **argv)
+{
+	struct nvme_lnvm_responsibility resp;
+	struct nvme_lnvm_features feat;
+	int opt, err, long_index = 0;
+	unsigned int nsid = 0;
+	unsigned char val[LNVM_SET_MAX_RESPONSIBILITY];
+
+	static struct option opts[] = {
+		{"namespace-id", required_argument, 0, 'n'},
+		{"l2pmapping", required_argument, 0, 'l'},
+		{"p2lmapping", required_argument, 0, 'p'},
+		{"handlegc", required_argument, 0, 'g'},
+		{"handleecc", required_argument, 0, 'e'},
+		{0, 0, 0, 0 }
+	};
+
+	memset(val, 0xFF, sizeof(val));
+	while ((opt = getopt_long(argc, (char **)argv, "n:l:p:g:e:", opts,
+							&long_index)) != -1) {
+		switch (opt) {
+		case 'n':
+			get_int(optarg, &nsid);
+			break;
+		case 'l':
+			get_byte(optarg, &val[0]);
+			if (val[0] > LNVM_SET_RESPONSIBILITY_MAX_VALUE) {
+				fprintf(stderr, "invalid 'l2pmapping' param:%d\n", val[0]);
+				return EINVAL;
+			}
+			break;
+		case 'p':
+			get_byte(optarg, &val[1]);
+			if (val[1] > LNVM_SET_RESPONSIBILITY_MAX_VALUE) {
+				fprintf(stderr, "invalid 'p2lmapping' param:%d\n", val[1]);
+				return EINVAL;
+			}
+			break;
+		case 'g':
+			get_byte(optarg, &val[2]);
+			if (val[2] > LNVM_SET_RESPONSIBILITY_MAX_VALUE) {
+				fprintf(stderr, "invalid 'handlegc' param:%d\n", val[2]);
+				return EINVAL;
+			}
+			break;
+		case 'e':
+			get_byte(optarg, &val[3]);
+			if (val[3] > LNVM_SET_RESPONSIBILITY_MAX_VALUE) {
+				fprintf(stderr, "invalid 'handleecc' param:%d\n", val[3]);
+				return EINVAL;
+			}
+			break;
+		default:
+			return EINVAL;
+		}
+	}
+	get_dev(optind, argc, argv);
+
+	err = lnvm_features(lnvm_admin_get_features, nsid, &feat, sizeof(feat));
+	if (!err) {
+		if (feat.responsibilities & LNVM_DRIVE_PERFORM_L2P)
+			resp.l2pmapping = 1;
+		else
+			resp.l2pmapping = 0;
+
+		if (feat.responsibilities & LNVM_DRIVE_DOES_L2P)
+			resp.p2lmapping = 1;
+		else
+			resp.p2lmapping = 0;
+
+		if (feat.responsibilities & LNVM_DRIVE_HANDLE_GC)
+			resp.handlegc = 1;
+		else
+			resp.handlegc = 0;
+
+		if (feat.responsibilities & LNVM_DRIVE_HANDLE_GC)
+			resp.handleecc = 1;
+		else
+			resp.handleecc = 0;
+	}
+	else if (err > 0) {
+		fprintf(stderr, "LightNvm Get Features Status: %s NSID:%d\n", nvme_status_to_string(err), nsid);
+	}
+
+	if (val[0] != 0xFF)
+		resp.l2pmapping = val[0];
+	if (val[1] != 0xFF)
+		resp.p2lmapping = val[1];
+	if (val[2] != 0xFF)
+		resp.handlegc = val[2];
+	if (val[3] != 0xFF)
+		resp.handleecc = val[3];
+
+	err = lnvm_features(lnvm_admin_set_responsibility, nsid, &resp, sizeof(resp));
+	if (!err) {
+		printf("LightNvm Set Responsibility %d:\n", nsid);
+		if (val[0] != 0xFF)
+			printf("Translation to Logical to Physical address mapping %s\n",
+				(!val[0]) ? "on host-side" : "on device-side");
+		if (val[1] != 0xFF)
+			printf("Translation to Physical to Logical address mapping %s\n",
+				(!val[1]) ? "on host-side" : "on device-side");
+		if (val[2] != 0xFF)
+			printf("Drive handles garbage collection of blocks %s\n",
+				(!val[2]) ? "on host-side" : "on device-side");
+		if (val[3] != 0xFF)
+			printf("Drive handles ECC %s\n",
+				(!val[3]) ? "on host-side" : "on device-side");
+	}
+	else if (err > 0) {
+		fprintf(stderr, "LightNvm Set Responsibility Status: %s NSID:%d\n", nvme_status_to_string(err), nsid);
+	}
+
+	return err;
+}
+
+static int lnvm_get_l2p_table(int argc, char **argv)
+{
+	int opt, err, long_index = 0;
+	unsigned int nsid = 0, nlb = 0;
+	__u64 slba = 0;
+	__u64 *l2p_entry;
+	void *buffer;
+	int i;
+
+	static struct option opts[] = {
+		{"namespace-id", required_argument, 0, 'n'},
+		{"start-block", required_argument, 0, 's'},
+		{"block-count", required_argument, 0, 'c'},
+		{0, 0, 0, 0 }
+	};
+
+	while ((opt = getopt_long(argc, (char **)argv, "n:s:c:", opts,
+							&long_index)) != -1) {
+		switch (opt) {
+		case 'n':
+			get_int(optarg, &nsid);
+			break;
+		case 's':
+			get_long(optarg, &slba);
+			break;
+		case 'c':
+			get_int(optarg, &nlb);
+			if (nlb > LNVM_GET_L2P_MAX_ENTRY) {
+				fprintf(stderr, "invalid 'nlb' param:%d\n", nlb);
+				return EINVAL;
+			}
+			break;
+		default:
+			return EINVAL;
+		}
+	}
+	get_dev(optind, argc, argv);
+
+	/* Every entry is 8 bytes */
+	buffer = malloc(nlb << 3);
+	if (!buffer) {
+		fprintf(stderr, "fail to allocate memory for l2p table\n");
+		return EINVAL;
+	}
+
+	err = lnvm_get_l2p_tbl(nsid, slba, nlb, LNVM_GET_L2P_MAX_PAGE, buffer, (nlb << 3));
+	if (!err) {
+		printf("LightNvm Get L2P Table %d: slba = %#llx, nlb = %#x\n", nsid, slba, nlb);
+
+		l2p_entry = (__u64 *)buffer;
+		for (i = 0; i < nlb; i ++) {
+			printf("%#llx\t", l2p_entry[i]);
+			if ((i % 4) == 3)
+				printf("\n");
+		}
+		printf("\n");
+	}
+	else if (err > 0) {
+		fprintf(stderr, "LightNvm Get L2P Table Status: %s NSID:%d, Slba:%#llx, nlb:%#x\n",
+			nvme_status_to_string(err), nsid, slba, nlb);
+	}
+
+	return err;
+}
+
+static int lnvm_write(int argc, char **argv)
+{
+	struct nvme_passthru_cmd cmd;
+	struct nvme_lnvm_rw_command lnvmrw;
+	void *buffer = NULL;
+	int err, opt, dfd = STDIN_FILENO, long_index = 0;
+	unsigned int nsid = 0, data_size = 0;
+	__u8 prinfo = 0, al = 0, af = 0;
+	static struct option opts[] = {
+		{"namespace-id", required_argument, 0, 'n'},
+		{"start-block", required_argument, 0, 's'},
+		{"block-count", required_argument, 0, 'c'},
+		{"data-size", required_argument, 0, 'z'},
+		{"data", required_argument, 0, 'd'},
+		{"prinfo", required_argument, 0, 'p'},
+		{"limited-retry", no_argument, 0, 'l'},
+		{"force-unit-access", no_argument, 0, 'f'},
+		{"incompressible", no_argument, 0, 'i'},
+		{"sequential-request", no_argument, 0, 'r'},
+		{"access-latency", required_argument, 0, 'a'},
+		{"access-frequency", required_argument, 0, 'e'},
+		{ 0, 0, 0, 0}
+	};
+
+	memset(&lnvmrw, 0, sizeof(lnvmrw));
+	while ((opt = getopt_long(argc, (char **)argv, "n:p:s:c:z:d:lfira:e:", opts,
+							&long_index)) != -1) {
+		switch(opt) {
+		case 'n':
+			get_int(optarg, &nsid);
+			break;
+		case 's': get_long(optarg, &lnvmrw.slba); break;
+		case 'c': get_short(optarg, &lnvmrw.length); break;
+		case 'z': get_int(optarg, &data_size); break;
+		case 'p':
+			get_byte(optarg, &prinfo);
+			if (prinfo > 0xf)
+				return EINVAL;
+			lnvmrw.control |= (prinfo << 10);
+			break;
+		case 'l':
+			lnvmrw.control |= NVME_RW_LR;
+			break;
+		case 'f':
+			lnvmrw.control | NVME_RW_FUA;
+			break;
+		case 'd': 
+			dfd = open(optarg, O_RDONLY);
+			if (dfd < 0) {
+				perror(optarg);
+				return EINVAL;
+			}
+			break;
+		case 'i':
+			lnvmrw.dsmgmt |= NVME_RW_DSM_COMPRESSED;
+			break;
+		case 'r':
+			lnvmrw.dsmgmt |= NVME_RW_DSM_SEQ_REQ;
+			break;
+		case 'a':
+			get_byte(optarg, &al);
+			if (al > 3)
+				return EINVAL;
+			lnvmrw.dsmgmt |= (al << 4);
+			break;
+		case 'e':
+			get_byte(optarg, &af);
+			if (af > 0xf)
+				return EINVAL;
+			lnvmrw.dsmgmt |= af;
+			break;
+		default:
+			return EINVAL;
+		}
+	};
+	get_dev(optind, argc, argv);
+
+	if (lnvmrw.length == 0) {
+		fprintf(stderr, "block count is invalid\n");
+		return EINVAL;
+	}
+	lnvmrw.length -= 1;
+
+	if (!data_size) {
+		fprintf(stderr, "data size not provided\n");
+		return EINVAL;
+	}
+	if (data_size > PAGE_SIZE) {
+		fprintf(stderr, "data size is too large\n");
+		return EINVAL;
+	}
+	buffer = malloc(PAGE_SIZE);
+	if (buffer == NULL)
+	{
+		fprintf(stderr, "failed to allocate memory to store data\n");
+		return EINVAL;
+	}
+
+	if (read(dfd, (void *)buffer, data_size) < 0) {
+		fprintf(stderr, "failed to read data\n");
+		return EINVAL;
+	}
+
+	memcpy(&cmd, &lnvmrw, sizeof(lnvmrw));
+	cmd.nsid = nsid;
+        cmd.opcode = nvme_cmd_write;
+	cmd.addr = (__u64)buffer;
+	cmd.data_len = PAGE_SIZE;
+	err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
+	if (err < 0)
+		perror("ioctl");
+	else
+		printf("LightNvm write:%s(%04x)\n", nvme_status_to_string(err), err);
+	close(dfd);
+	return 0;
+}
+
+static int lnvm_read(int argc, char **argv)
+{
+	struct nvme_passthru_cmd cmd;
+	struct nvme_lnvm_rw_command lnvmrw;
+	void *buffer = NULL;
+	int err, opt, dfd = STDOUT_FILENO, long_index = 0;
+	unsigned int nsid = 0, data_size = 0;
+	__u8 prinfo = 0, al = 0, af = 0;
+	static struct option opts[] = {
+		{"namespace-id", required_argument, 0, 'n'},
+		{"start-block", required_argument, 0, 's'},
+		{"block-count", required_argument, 0, 'c'},
+		{"data-size", required_argument, 0, 'z'},
+		{"data", required_argument, 0, 'd'},
+		{"prinfo", required_argument, 0, 'p'},
+		{"limited-retry", no_argument, 0, 'l'},
+		{"force-unit-access", no_argument, 0, 'f'},
+		{"incompressible", no_argument, 0, 'i'},
+		{"sequential-request", no_argument, 0, 'r'},
+		{"access-latency", required_argument, 0, 'a'},
+		{"access-frequency", required_argument, 0, 'e'},
+		{ 0, 0, 0, 0}
+	};
+
+	memset(&lnvmrw, 0, sizeof(lnvmrw));
+	while ((opt = getopt_long(argc, (char **)argv, "n:p:s:c:z:d:lfira:e:", opts,
+							&long_index)) != -1) {
+		switch(opt) {
+		case 'n':
+			get_int(optarg, &nsid);
+			break;
+		case 's': get_long(optarg, &lnvmrw.slba); break;
+		case 'c': get_short(optarg, &lnvmrw.length); break;
+		case 'z': get_int(optarg, &data_size); break;
+		case 'p':
+			get_byte(optarg, &prinfo);
+			if (prinfo > 0xf)
+				return EINVAL;
+			lnvmrw.control |= (prinfo << 10);
+			break;
+		case 'l':
+			lnvmrw.control |= NVME_RW_LR;
+			break;
+		case 'f':
+			lnvmrw.control | NVME_RW_FUA;
+			break;
+		case 'd': 
+			dfd = open(optarg, O_WRONLY);
+			if (dfd < 0) {
+				perror(optarg);
+				return EINVAL;
+			}
+			break;
+		case 'i':
+			lnvmrw.dsmgmt |= NVME_RW_DSM_COMPRESSED;
+			break;
+		case 'r':
+			lnvmrw.dsmgmt |= NVME_RW_DSM_SEQ_REQ;
+			break;
+		case 'a':
+			get_byte(optarg, &al);
+			if (al > 3)
+				return EINVAL;
+			lnvmrw.dsmgmt |= (al << 4);
+			break;
+		case 'e':
+			get_byte(optarg, &af);
+			if (af > 0xf)
+				return EINVAL;
+			lnvmrw.dsmgmt |= af;
+			break;
+		default:
+			return EINVAL;
+		}
+	};
+	get_dev(optind, argc, argv);
+
+	if (lnvmrw.length == 0) {
+		fprintf(stderr, "block count is invalid\n");
+		return EINVAL;
+	}
+	lnvmrw.length -= 1;
+
+	if (!data_size) {
+		fprintf(stderr, "data size not provided\n");
+		return EINVAL;
+	}
+	if (data_size > PAGE_SIZE) {
+		fprintf(stderr, "data size is too large\n");
+		return EINVAL;
+	}
+	buffer = malloc(PAGE_SIZE);
+	if (buffer == NULL)
+	{
+		fprintf(stderr, "failed to allocate memory to store data\n");
+		return EINVAL;
+	}
+
+	memcpy(&cmd, &lnvmrw, sizeof(lnvmrw));
+	cmd.nsid = nsid;
+        cmd.opcode = nvme_cmd_read;
+	cmd.addr = (__u64)buffer;
+	cmd.data_len = PAGE_SIZE;
+	err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
+	if (err < 0)
+		perror("ioctl");
+	else if (err > 0)
+		printf("LightNvm read:%s(%04x)\n", nvme_status_to_string(err), err);
+	else {
+		if (write(dfd, (void *)buffer, data_size) < 0) {
+			fprintf(stderr, "failed to write data\n");
+			return EINVAL;
+		}
+		fsync(dfd);
+		printf("LightNvm read:%s(%04x)\n", nvme_status_to_string(err), err);
+	}
+	close(dfd);
+	return 0;
+}
+
 static int id_ns(int argc, char **argv)
 {
 	struct nvme_id_ns ns;
@@ -843,6 +1423,10 @@ static int id_ns(int argc, char **argv)
 			d_raw((unsigned char *)&ns, sizeof(ns));
 		else
 			show_nvme_id_ns(&ns, nsid, vs);
+
+		/* Check if it is a LightNvm namespace */
+		if (ns.nsfeat & NVME_NS_FEAT_LIGHTNVM)
+			err = lnvm_id_ns(nsid, raw);
 	}
 	else if (err > 0)
 		fprintf(stderr, "NVMe Status: %s NSID:%d\n", nvme_status_to_string(err), nsid);
@@ -1824,7 +2408,7 @@ static int write_cmd(int argc, char **argv)
 static int sec_recv(int argc, char **argv)
 {
 	struct nvme_admin_cmd cmd;
-        int err, opt, long_index = 0, raw = 0;
+	int err, opt, long_index = 0, raw = 0;
 	void *sec_buf = NULL;
 	unsigned int al = 0;
 	unsigned short spsp = 0;
@@ -2055,7 +2639,7 @@ static void general_help()
 	       "or an nvme block device (ex: /dev/nvme0n1)\n\n");
 	printf("The following are all implemented sub-commands:\n");
 	for (i = 0; i < NUM_COMMANDS; i++)
-		printf("  %-*s %s\n", 15, commands[i].name, commands[i].help);
+		printf("  %-*s %s\n", 18, commands[i].name, commands[i].help);
 	printf("\n");
 	printf("See 'nvme help <command>' for more information on a specific command.\n");
 }

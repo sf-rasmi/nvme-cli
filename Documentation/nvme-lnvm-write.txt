@@ -1,0 +1,122 @@
+nvme-lnvm-write(1)
+==================
+
+NAME
+----
+nvme-lnvm-write - Write a single block to LightNvm namespace, returns 
+applicable results.
+
+SYNOPSIS
+--------
+[verse]
+'nvme-lnvm-write' <device> [--namespace-id=<nsid> | -n <nsid>]
+			 [--start-block=<slba> | -s <slba>]
+			 [--block-count=<nlb> | -c <nlb>]
+			 [--data-size=<size> | -z <size>]
+			 [--data=<data-file> | -d <data-file>]
+			 [--prinfo=<prinfo> | -p <prinfo>]
+			 [--limited-retry | -l]
+			 [--force-unit-access | -f]
+			 [--incompressible | -i]
+			 [--sequential-request | -r]
+			 [--access-latency=<latency> | -d <latency>]
+			 [--access-frequency=<freq> | -p <freq>]
+
+DESCRIPTION
+-----------
+The Write command writes the logical blocks specified by the command
+to the medium. 
+
+OPTIONS
+-------
+-n <nsid>::
+--namespace-id=<nsid>::
+	Write the data to the given nsid namespace.
+
+-s <slba>::
+--start-block=<slba>::
+	Start logical block.
+
+-c <nlb>::
+--block-count=<nlb>::
+	Logical block count.
+
+-z <size>::
+--data-size=<size>::
+	Number of bytes data will be written to the medium. 
+	The size is no more than 4096.
+
+-d <data-file>::
+--data=<data-file>::
+	File to store data written to the mediun.     
+
+-p <prinfo>::
+--prinfo=<prinfo>::
+	Protection information. 
+	This is optional.
+
+-l::
+--limited-retry::
+	If set to '1', the controller should apply limited retry efforts.
+	If cleaned to '0', the controller should apply all available error 
+	recovery means to write the data to the NVM.
+	This is optional.
+
+-f::
+--force-unit-access::
+	If set to '1', data should be written to non-volatile media before 
+	indicating command completion.
+	This is optional.
+
+-i::
+--incompressible::
+	If set to '1', data is not compressible for the logical blocks indicated.
+	If cleaned to '0', then no information on compression is provided.
+	This is optional.
+
+-r::
+--sequential-request::
+	If set to '1', this command is part of a sequential write that includes 
+	multiple Write command.
+	If cleaned to '0', then no information on sequential access is provided.
+	This is optional.
+
+-d <latency>::
+--access-latency=<latency>::
+	Access latency.
+	This is optional.
++
+[]
+|==================
+|Latency|Description
+|0|None. No latency information provided. 
+|1|Idle. Longer latency acceptable. 
+|2|Normal. Typical latency. 
+|3|Low. Smallest possible latency. 
+|==================
+
+-p <freq>::
+--access-frequency=<freq>::
+	Access frequency.
+	This is optional.
++
+[]
+|==================
+|Freq|Description
+|0|No frequency information provided. 
+|1|Typical number of reads and writes expected for the LBA range. 
+|2|Infrequent writes and infrequent reads to the LBA range indicated.
+|3|Infrequent writes and frequent reads to the LBA range indicated.
+|4|Frequent writes and infrequent reads to the LBA range indicated.
+|5|Frequent writes and frequent reads to the LBA range indicated.
+|6|One time write.
+|7-15|Reserved.
+|==================
+
+EXAMPLES
+--------
+No examples yet.
+
+NVME
+----
+Part of the nvme-user suite

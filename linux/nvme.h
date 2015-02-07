@@ -156,13 +156,85 @@ struct nvme_id_ns {
 	__u8			vs[3712];
 };
 
+struct nvme_lnvm_id_chnl {
+	__le64			laddr_begin;
+	__le64			laddr_end;
+	__le32			oob_size;
+	__le32			queue_size;
+	__le32			gran_read;
+	__le32			gran_write;
+	__le32			gran_erase;
+	__le32			t_r;
+	__le32			t_sqr;
+	__le32			t_w;
+	__le32			t_sqw;
+	__le32			t_e;
+	__le16			chnl_parallelism;
+	__u8			io_sched;
+	__u8			reserved[133];
+};
+
+struct nvme_lnvm_id {
+	__u8				ver_id;
+	__u8				nvm_type;
+	__le16				nchannels;
+	__u8				reserved[252];
+	struct nvme_lnvm_id_chnl	chnls[];
+};
+
+#define NVME_LNVM_CHNLS_PR_REQ ((4096U - sizeof(struct nvme_lnvm_id)) \
+					/ sizeof(struct nvme_lnvm_id_chnl))
+
 enum {
 	NVME_NS_FEAT_THIN	= 1 << 0,
+	NVME_NS_FEAT_LIGHTNVM	= 1 << 1,
 	NVME_LBAF_RP_BEST	= 0,
 	NVME_LBAF_RP_BETTER	= 1,
 	NVME_LBAF_RP_GOOD	= 2,
 	NVME_LBAF_RP_DEGRADED	= 3,
 };
+
+struct nvme_lnvm_features {
+	__le64				responsibilities;
+	__le64				extensions;
+	__u64				rsvd;
+};
+
+enum {
+	LNVM_DRIVE_PERFORM_L2P	= 1 << 0,
+	LNVM_DRIVE_DOES_L2P	= 1 << 1,
+	LNVM_DRIVE_HANDLE_GC	= 1 << 2,
+	LNVM_DRIVE_HANDLE_ECC	= 1 << 3,
+	LNVM_BLOCK_MOVE	= 1 << 0,
+	LNVM_COPY_BACK	= 1 << 1,
+	LNVM_POWERSAFE_SHUTDOWN	= 1 << 2,
+};
+
+struct nvme_lnvm_responsibility {
+	__u8				l2pmapping;
+	__u8				p2lmapping;
+	__u8				handlegc;
+	__u8				handleecc;
+	__u8				rsvd[60];
+};
+
+enum {
+	LNVM_SET_DRIVE_HANDLE_L2P	= 0,
+	LNVM_SET_DRIVE_HANDLE_P2L	= 1,
+	LNVM_SET_DRIVE_HANDLE_GC	= 2,
+	LNVM_SET_DRIVE_HANDLE_ECC	= 3,
+	LNVM_SET_MAX_RESPONSIBILITY	= 4,
+};
+
+enum {
+	LNVM_SET_HANDLE_ON_HOST	= 0,
+	LNVM_SET_HANDLE_ON_DEVICE	= 1,
+	LNVM_SET_RESPONSIBILITY_MAX_VALUE	= 1,
+};
+
+#define PAGE_SIZE 4096
+#define LNVM_GET_L2P_MAX_ENTRY	4096
+#define LNVM_GET_L2P_MAX_PAGE	8
 
 struct nvme_smart_log {
 	__u8			critical_warning;
@@ -340,6 +412,11 @@ enum nvme_admin_opcode {
 	nvme_admin_format_nvm		= 0x80,
 	nvme_admin_security_send	= 0x81,
 	nvme_admin_security_recv	= 0x82,
+
+	lnvm_admin_identify		= 0xc0,
+	lnvm_admin_get_features		= 0xc1,
+	lnvm_admin_set_responsibility	= 0xc2,
+	lnvm_admin_get_l2p_tbl		= 0xc3,
 };
 
 enum {
@@ -469,6 +546,36 @@ struct nvme_format_cmd {
 	__u32			rsvd11[5];
 };
 
+struct nvme_lnvm_l2ptbl_command {
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
+	__le32			nsid;
+	__le32			cdw2[4];
+	__le64			prp1;
+	__le64			prp2;
+	__le64			slba;
+	__le32			nlb;
+	__u16			prp1_len;
+	__le16			cdw14[5];
+};
+
+struct nvme_lnvm_rw_command {
+	__u8			opcode;
+	__u8			flags;
+	__u16			command_id;
+	__le32			nsid;
+	__u64			rsvd2;
+	__le64			metadata;
+	__le64			prp1;
+	__le64			prp2;
+	__le64			slba;
+	__le16			length;
+	__le16			control;
+	__le32			dsmgmt;
+	__le64			phys_addr;
+};
+
 struct nvme_command {
 	union {
 		struct nvme_common_command common;
@@ -482,6 +589,9 @@ struct nvme_command {
 		struct nvme_format_cmd format;
 		struct nvme_dsm_cmd dsm;
 		struct nvme_abort_cmd abort;
+
+		struct nvme_lnvm_l2ptbl_command l2ptbl;
+		struct nvme_lnvm_rw_command lnvmrw;
 	};
 };
 
