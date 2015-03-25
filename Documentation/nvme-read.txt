@@ -11,12 +11,14 @@ SYNOPSIS
 'nvme-read' <device> [--start-block=<slba> | -s <slba>]
 			[--block-count=<nlb> | -c <nlb>]
 			[--data-size=<size> | -z <size>]
+			[--metadata-size=<size> | -y <size>]
 			[--ref-tag=<reftag> | -r <reftag>]
 			[--data=<data-file> | -d <data-file>]
 			[--prinfo=<prinfo> | -p <prinfo>]
 			[--app-tag-mask=<appmask> | -m <appmask>]
 			[--app-tag=<apptag> | -a <apptag>]
 			[--limited-retry | -l]
+			[--latency | -t]
 			[--force-unit-access | -f]
 
 DESCRIPTION
@@ -30,6 +32,10 @@ OPTIONS
 --start-block=<slba>::
 -s <slba>::
 	Start block.
+
+--latency::
+-t::
+	Print out the latency the IOCTL took (in us).
 
 EXAMPLES
 --------

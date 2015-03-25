@@ -16,33 +16,38 @@
 #   Author: Stephen Bates <stephen.bates@pmcs.com>
 #
 #   Description:
-#     Regression test-suite for the NVM Express CLI.
+#     A shell script that calls the NVMe CLI multiple times to gather
+#     latency data. Consider this a poor man's iometer or fio for QD=1
+#     analysis. Of course this is below the file-system and block
+#     layer so is a best case measurement.
 #
 
 DEVICE=
 WRITE=false
-LIST=false
+COUNT=10
+DATA_SIZE=4096
+METADATA_SIZE=64
 
 RAND_BASE=temp.rand
 RAND_WFILE=${RAND_BASE}.write
 RAND_RFILE=${RAND_BASE}.read
-RAND_SIZE=4k
+OUTPUT=latency.dat
 
 green=$(tput bold)$(tput setaf 2)
 red=$(tput bold)$(tput setaf 1)
 rst=$(tput sgr0)
 
-while getopts ":d:wl" opt; do
+while getopts ":d:n:w" opt; do
   case $opt in
     d)
       DEVICE=${OPTARG}
       ;;
+    n)
+      COUNT=${OPTARG}
+      ;;
     w)
       echo "WARNING: Write mode enabled, this might trash your drive!"
       WRITE=true
-      ;;
-    l)
-      LIST=true
       ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
@@ -60,49 +65,32 @@ if [ -z "$DEVICE" ]; then
      exit 1
 fi
 
-function print_pass_fail {
-    $* > /dev/null 2>&1
+function run_test {
+    $* | grep -i latency >> ${OUTPUT} 2>&1
     if (( $? )); then
         echo ${red}"FAILED!"${rst}
         echo "Failed running command: "
         echo  "   $*"
         exit 1
-    else
-        echo ${green}"PASSED!"${rst}
     fi
 }
 
-function run_test {
-    LINE="$*"
-    printf  "  %-3s   %-68s : " "RUN" "${LINE::67}"
-    print_pass_fail $*
-}
-
-make clean > /dev/null || exit -1
+rm -f ${OUTPUT} > /dev/null || exit -1
+make clean   > /dev/null || exit -1
 make install > /dev/null || exit -1
 
-if $LIST ; then
-    run_test nvme list
-fi
-run_test nvme id-ctrl ${DEVICE}
-run_test nvme id-ns -raw-binary ${DEVICE}
-run_test nvme list-ns -n 1 ${DEVICE}
-run_test nvme get-ns-id ${DEVICE}
-run_test nvme get-log ${DEVICE}  --log-id=2 --log-len=512
-run_test nvme fw-log ${DEVICE}
-run_test nvme fw-log ${DEVICE} -b
-run_test nvme smart-log ${DEVICE}
-run_test nvme error-log ${DEVICE}
-run_test nvme get-feature ${DEVICE} -f 7
-run_test nvme flush ${DEVICE}
-
-if $WRITE ; then
-    run_test dd if=/dev/urandom of=${RAND_WFILE} bs=${RAND_SIZE} count=1
-    run_test nvme write ${DEVICE} --start-block=0 --block-count=0 --data-size=${RAND_SIZE} --data ${RAND_WFILE}
-fi
-run_test nvme read ${DEVICE} --start-block=0 --block-count=0 --data-size=${RAND_SIZE} --data ${RAND_RFILE} --latency
-if $WRITE ; then
-    run_test diff ${RAND_RFILE} ${RAND_WFILE}
-    rm ${RAND_WFILE} > /dev/null
-fi
-rm ${RAND_RFILE} > /dev/null
+for i in `seq 1 ${COUNT}`;
+do
+    if $WRITE ; then
+        run_test dd if=/dev/urandom of=${RAND_WFILE} bs=${DATA_SIZE} count=1
+        run_test nvme write ${DEVICE} --start-block=0 --block-count=0 \
+            --metadata-size=${METADATA_SIZE} --data-size=${DATA_SIZE} \
+            --data ${RAND_WFILE} --latency
+        rm ${RAND_WFILE} > /dev/null
+    else
+        run_test nvme read ${DEVICE} --start-block=0 --block-count=0 \
+            --metadata-size=${METADATA_SIZE} --data-size=${DATA_SIZE} \
+            --data ${RAND_RFILE} --latency
+        rm ${RAND_RFILE} > /dev/null
+    fi
+done
