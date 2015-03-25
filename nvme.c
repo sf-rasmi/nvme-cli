@@ -676,21 +676,22 @@ static int get_error_log(int argc, char **argv)
 	if (!cfg.log_entries) {
 		fprintf(stderr, "non-zero log-entires is required param\n");
 		return EINVAL;
+	} else {
+		struct nvme_error_log_page err_log[cfg.log_entries];
+	
+		err = nvme_get_log(err_log,
+				sizeof(err_log), 0x1 | (((sizeof(err_log) / 4) - 1) << 16),
+				cfg.namespace_id);
+		if (!err) {
+			if (!cfg.raw_binary)
+				show_error_log(err_log, cfg.log_entries);
+			else
+				d_raw((unsigned char *)err_log, sizeof(err_log));
+		}
+		else if (err > 0)
+			fprintf(stderr, "NVMe Status: %s\n", nvme_status_to_string(err));
+		return err;
 	}
-	struct nvme_error_log_page err_log[cfg.log_entries];
-
-	err = nvme_get_log(err_log,
-			   sizeof(err_log), 0x1 | (((sizeof(err_log) / 4) - 1) << 16),
-			   cfg.namespace_id);
-	if (!err) {
-		if (!cfg.raw_binary)
-			show_error_log(err_log, cfg.log_entries);
-		else
-			d_raw((unsigned char *)err_log, sizeof(err_log));
-	}
-	else if (err > 0)
-		fprintf(stderr, "NVMe Status: %s\n", nvme_status_to_string(err));
-	return err;
 }
 
 static int get_fw_log(int argc, char **argv)
@@ -979,15 +980,15 @@ static int list(int argc, char **argv)
 			count++;
 		}
 	}
-  udev_enumerate_unref(enumerate);
-  udev_unref(udev);
+	udev_enumerate_unref(enumerate);
+	udev_unref(udev);
 
-  if (count)
-	  print_list_items(list_items, count);
-  else
-	  fprintf(stdout,"No NVMe devices detected.\n");
+	if (count)
+		print_list_items(list_items, count);
+	else
+		fprintf(stdout,"No NVMe devices detected.\n");
 
-  return 0;
+	return 0;
 }
 #endif
 
@@ -1075,37 +1076,37 @@ static int lnvm_id_ns(int nsid, unsigned int raw)
 static int lnvm_get_features(int argc, char **argv)
 {
 	struct nvme_lnvm_features feat;
-	int opt, err, long_index = 0;
-	unsigned int nsid = 0;
+	int err;
 
-	static struct option opts[] = {
-		{"namespace-id", required_argument, 0, 'n'},
-		{0, 0, 0, 0 }
+	struct config {
+		__u32 namespace_id;
+	};
+	struct config cfg;
+
+	const struct config defaults = {
+		.namespace_id    = 0,
 	};
 
-	while ((opt = getopt_long(argc, (char **)argv, "n:", opts,
-							&long_index)) != -1) {
-		switch (opt) {
-		case 'n':
-			get_int(optarg, &nsid);
-			break;
-		default:
-			return EINVAL;
-		}
-	}
-	get_dev(optind, argc, argv);
+	const struct argconfig_commandline_options command_line_options[] = {
+		{"namespace-id",    "NUM",  CFG_POSITIVE, &defaults.namespace_id,    required_argument, NULL},
+		{"n",               "NUM",  CFG_POSITIVE, &defaults.namespace_id,    required_argument, NULL},
+		{0}
+	};
+	argconfig_parse(argc, argv, "lnvm-get-features", command_line_options,
+			&defaults, &cfg, sizeof(cfg));
+	get_dev(1, argc, argv);
 
-	err = lnvm_features(lnvm_admin_get_features, nsid, &feat, sizeof(feat));
+	err = lnvm_features(lnvm_admin_get_features, cfg.namespace_id, &feat, sizeof(feat));
 	if (!err) {
-		printf("LightNvm Get Features %d:\n", nsid);
-		printf("Drive performs translation of L2P address mapping    : %#llx\n",
-			(feat.responsibilities & LNVM_DRIVE_PERFORM_L2P));
-		printf("Drive does translation of L2P address mapping    : %#llx\n",
-			((feat.responsibilities & LNVM_DRIVE_DOES_L2P) >> 1));
-		printf("Drive handles garbage collection of blocks    : %#llx\n",
-			((feat.responsibilities & LNVM_DRIVE_HANDLE_GC) >> 2));
-		printf("Drive handles ECC    : %#llx\n",
-			((feat.responsibilities & LNVM_DRIVE_HANDLE_ECC) >> 3));
+		printf("LightNvm Get Features %d:\n", cfg.namespace_id);
+		printf("Drive performs translation of L2P address mapping    : %s\n",
+			(!(feat.responsibilities & LNVM_DRIVE_PERFORM_L2P)) ? "on host-side" : "on device-side");
+		printf("Drive does translation of L2P address mapping    : %s\n",
+			(!((feat.responsibilities & LNVM_DRIVE_DOES_L2P) >> 1)) ? "on host-side" : "on device-side");
+		printf("Drive handles garbage collection of blocks    : %s\n",
+			(!((feat.responsibilities & LNVM_DRIVE_HANDLE_GC) >> 2)) ? "on host-side" : "on device-side");
+		printf("Drive handles ECC    : %s\n",
+			(!((feat.responsibilities & LNVM_DRIVE_HANDLE_ECC) >> 3)) ? "on host-side" : "on device-side");
 		printf("Block Move    : %#llx\n",
 			(feat.extensions & LNVM_BLOCK_MOVE));
 		printf("NVM copy-back - End-to-end    : %#llx\n",
@@ -1114,7 +1115,8 @@ static int lnvm_get_features(int argc, char **argv)
 			((feat.extensions & LNVM_POWERSAFE_SHUTDOWN) >> 2));
 	}
 	else if (err > 0) {
-		fprintf(stderr, "LightNvm Get Features Status: %s NSID:%d\n", nvme_status_to_string(err), nsid);
+		fprintf(stderr, "LightNvm Get Features Status: %s NSID:%d\n",
+			nvme_status_to_string(err), cfg.namespace_id);
 	}
 
 	return err;
@@ -1124,61 +1126,67 @@ static int lnvm_set_responsibility(int argc, char **argv)
 {
 	struct nvme_lnvm_responsibility resp;
 	struct nvme_lnvm_features feat;
-	int opt, err, long_index = 0;
-	unsigned int nsid = 0;
-	unsigned char val[LNVM_SET_MAX_RESPONSIBILITY];
+	int err;
 
-	static struct option opts[] = {
-		{"namespace-id", required_argument, 0, 'n'},
-		{"l2pmapping", required_argument, 0, 'l'},
-		{"p2lmapping", required_argument, 0, 'p'},
-		{"handlegc", required_argument, 0, 'g'},
-		{"handleecc", required_argument, 0, 'e'},
-		{0, 0, 0, 0 }
+	struct config {
+		__u32 namespace_id;
+		__u8  l2pmapping;
+		__u8  p2lmapping;
+		__u8  handlegc;
+		__u8  handleecc;
+	};
+	struct config cfg;
+
+	const struct config defaults = {
+		.namespace_id    = 0,
+		.l2pmapping        = 0xFF,
+		.p2lmapping        = 0xFF,
+		.handlegc            = 0xFF,
+		.handleecc           = 0xFF,
 	};
 
-	memset(val, 0xFF, sizeof(val));
-	while ((opt = getopt_long(argc, (char **)argv, "n:l:p:g:e:", opts,
-							&long_index)) != -1) {
-		switch (opt) {
-		case 'n':
-			get_int(optarg, &nsid);
-			break;
-		case 'l':
-			get_byte(optarg, &val[0]);
-			if (val[0] > LNVM_SET_RESPONSIBILITY_MAX_VALUE) {
-				fprintf(stderr, "invalid 'l2pmapping' param:%d\n", val[0]);
-				return EINVAL;
-			}
-			break;
-		case 'p':
-			get_byte(optarg, &val[1]);
-			if (val[1] > LNVM_SET_RESPONSIBILITY_MAX_VALUE) {
-				fprintf(stderr, "invalid 'p2lmapping' param:%d\n", val[1]);
-				return EINVAL;
-			}
-			break;
-		case 'g':
-			get_byte(optarg, &val[2]);
-			if (val[2] > LNVM_SET_RESPONSIBILITY_MAX_VALUE) {
-				fprintf(stderr, "invalid 'handlegc' param:%d\n", val[2]);
-				return EINVAL;
-			}
-			break;
-		case 'e':
-			get_byte(optarg, &val[3]);
-			if (val[3] > LNVM_SET_RESPONSIBILITY_MAX_VALUE) {
-				fprintf(stderr, "invalid 'handleecc' param:%d\n", val[3]);
-				return EINVAL;
-			}
-			break;
-		default:
-			return EINVAL;
-		}
-	}
-	get_dev(optind, argc, argv);
+	const struct argconfig_commandline_options command_line_options[] = {
+		{"namespace-id",    "NUM",  CFG_POSITIVE, &defaults.namespace_id,    required_argument, NULL},
+		{"n",               "NUM",  CFG_POSITIVE, &defaults.namespace_id,    required_argument, NULL},
+		{"l2pmapping",    "NUM",  CFG_POSITIVE, &defaults.l2pmapping,    required_argument, NULL},
+		{"l",               "NUM",  CFG_POSITIVE, &defaults.l2pmapping,    required_argument, NULL},
+		{"p2lmapping",    "NUM",  CFG_POSITIVE, &defaults.p2lmapping,    required_argument, NULL},
+		{"p",               "NUM",  CFG_POSITIVE, &defaults.p2lmapping,    required_argument, NULL},
+		{"handlegc",    "NUM",  CFG_POSITIVE, &defaults.handlegc,    required_argument, NULL},
+		{"g",               "NUM",  CFG_POSITIVE, &defaults.handlegc,    required_argument, NULL},
+		{"handleecc",    "NUM",  CFG_POSITIVE, &defaults.handleecc,    required_argument, NULL},
+		{"e",               "NUM",  CFG_POSITIVE, &defaults.handleecc,    required_argument, NULL},
+		{0}
+	};
+	argconfig_parse(argc, argv, "lnvm-set-resp", command_line_options,
+			&defaults, &cfg, sizeof(cfg));
+	get_dev(1, argc, argv);
 
-	err = lnvm_features(lnvm_admin_get_features, nsid, &feat, sizeof(feat));
+	if ((cfg.l2pmapping > LNVM_SET_RESPONSIBILITY_MAX_VALUE) &&
+	    (cfg.l2pmapping !=0xFF))	{
+		fprintf(stderr, "invalid 'l2pmapping' param:%d\n", cfg.l2pmapping);
+		return EINVAL;
+	}
+
+	if ((cfg.p2lmapping > LNVM_SET_RESPONSIBILITY_MAX_VALUE) &&
+	    (cfg.p2lmapping !=0xFF))	{
+		fprintf(stderr, "invalid 'p2lmapping' param:%d\n", cfg.p2lmapping);
+		return EINVAL;
+	}
+
+	if ((cfg.handlegc > LNVM_SET_RESPONSIBILITY_MAX_VALUE) &&
+	    (cfg.handlegc !=0xFF))	{
+		fprintf(stderr, "invalid 'handlegc' param:%d\n", cfg.handlegc);
+		return EINVAL;
+	}
+
+	if ((cfg.handleecc > LNVM_SET_RESPONSIBILITY_MAX_VALUE) &&
+	    (cfg.handleecc !=0xFF))	{
+		fprintf(stderr, "invalid 'handleecc' param:%d\n", cfg.handleecc);
+		return EINVAL;
+	}
+
+	err = lnvm_features(lnvm_admin_get_features, cfg.namespace_id, &feat, sizeof(feat));
 	if (!err) {
 		if (feat.responsibilities & LNVM_DRIVE_PERFORM_L2P)
 			resp.l2pmapping = 1;
@@ -1195,42 +1203,44 @@ static int lnvm_set_responsibility(int argc, char **argv)
 		else
 			resp.handlegc = 0;
 
-		if (feat.responsibilities & LNVM_DRIVE_HANDLE_GC)
+		if (feat.responsibilities & LNVM_DRIVE_HANDLE_ECC)
 			resp.handleecc = 1;
 		else
 			resp.handleecc = 0;
 	}
 	else if (err > 0) {
-		fprintf(stderr, "LightNvm Get Features Status: %s NSID:%d\n", nvme_status_to_string(err), nsid);
+		fprintf(stderr, "LightNvm Get Features Status: %s NSID:%d\n",
+			nvme_status_to_string(err), cfg.namespace_id);
 	}
 
-	if (val[0] != 0xFF)
-		resp.l2pmapping = val[0];
-	if (val[1] != 0xFF)
-		resp.p2lmapping = val[1];
-	if (val[2] != 0xFF)
-		resp.handlegc = val[2];
-	if (val[3] != 0xFF)
-		resp.handleecc = val[3];
+	if (cfg.l2pmapping != 0xFF)
+		resp.l2pmapping = cfg.l2pmapping;
+	if (cfg.p2lmapping != 0xFF)
+		resp.p2lmapping = cfg.p2lmapping;
+	if (cfg.handlegc != 0xFF)
+		resp.handlegc = cfg.handlegc;
+	if (cfg.handleecc != 0xFF)
+		resp.handleecc = cfg.handleecc;
 
-	err = lnvm_features(lnvm_admin_set_responsibility, nsid, &resp, sizeof(resp));
+	err = lnvm_features(lnvm_admin_set_responsibility, cfg.namespace_id, &resp, sizeof(resp));
 	if (!err) {
-		printf("LightNvm Set Responsibility %d:\n", nsid);
-		if (val[0] != 0xFF)
+		printf("LightNvm Set Responsibility %d:\n", cfg.namespace_id);
+		if (cfg.l2pmapping != 0xFF)
 			printf("Translation to Logical to Physical address mapping %s\n",
-				(!val[0]) ? "on host-side" : "on device-side");
-		if (val[1] != 0xFF)
+				(!cfg.l2pmapping) ? "on host-side" : "on device-side");
+		if (cfg.p2lmapping != 0xFF)
 			printf("Translation to Physical to Logical address mapping %s\n",
-				(!val[1]) ? "on host-side" : "on device-side");
-		if (val[2] != 0xFF)
+				(!cfg.p2lmapping) ? "on host-side" : "on device-side");
+		if (cfg.handlegc != 0xFF)
 			printf("Drive handles garbage collection of blocks %s\n",
-				(!val[2]) ? "on host-side" : "on device-side");
-		if (val[3] != 0xFF)
+				(!cfg.handlegc) ? "on host-side" : "on device-side");
+		if (cfg.handleecc != 0xFF)
 			printf("Drive handles ECC %s\n",
-				(!val[3]) ? "on host-side" : "on device-side");
+				(!cfg.handleecc) ? "on host-side" : "on device-side");
 	}
 	else if (err > 0) {
-		fprintf(stderr, "LightNvm Set Responsibility Status: %s NSID:%d\n", nvme_status_to_string(err), nsid);
+		fprintf(stderr, "LightNvm Set Responsibility Status: %s NSID:%d\n",
+			nvme_status_to_string(err), cfg.namespace_id);
 	}
 
 	return err;
@@ -1238,55 +1248,57 @@ static int lnvm_set_responsibility(int argc, char **argv)
 
 static int lnvm_get_l2p_table(int argc, char **argv)
 {
-	int opt, err, long_index = 0;
-	unsigned int nsid = 0, nlb = 0;
-	__u64 slba = 0;
+	int err;
 	__u64 *l2p_entry;
 	void *buffer;
 	int i;
 
-	static struct option opts[] = {
-		{"namespace-id", required_argument, 0, 'n'},
-		{"start-block", required_argument, 0, 's'},
-		{"block-count", required_argument, 0, 'c'},
-		{0, 0, 0, 0 }
+	struct config {
+		__u32 namespace_id;
+		__u64 start_block;
+		__u32 block_count;
+	};
+	struct config cfg;
+
+	const struct config defaults = {
+		.namespace_id    = 0,
+		.start_block         = 0,
+		.block_count       = 0,
 	};
 
-	while ((opt = getopt_long(argc, (char **)argv, "n:s:c:", opts,
-							&long_index)) != -1) {
-		switch (opt) {
-		case 'n':
-			get_int(optarg, &nsid);
-			break;
-		case 's':
-			get_long(optarg, &slba);
-			break;
-		case 'c':
-			get_int(optarg, &nlb);
-			if (nlb > LNVM_GET_L2P_MAX_ENTRY) {
-				fprintf(stderr, "invalid 'nlb' param:%d\n", nlb);
-				return EINVAL;
-			}
-			break;
-		default:
-			return EINVAL;
-		}
+	const struct argconfig_commandline_options command_line_options[] = {
+		{"namespace-id",    "NUM",  CFG_POSITIVE, &defaults.namespace_id,    required_argument, NULL},
+		{"n",               "NUM",  CFG_POSITIVE, &defaults.namespace_id,    required_argument, NULL},
+		{"start_block",    "NUM",  CFG_POSITIVE, &defaults.start_block,    required_argument, NULL},
+		{"s",               "NUM",  CFG_POSITIVE, &defaults.start_block,    required_argument, NULL},
+		{"block_count",    "NUM",  CFG_POSITIVE, &defaults.block_count,    required_argument, NULL},
+		{"c",               "NUM",  CFG_POSITIVE, &defaults.block_count,    required_argument, NULL},
+		{0}
+	};
+	argconfig_parse(argc, argv, "lnvm-get-l2p-tbl", command_line_options,
+			&defaults, &cfg, sizeof(cfg));
+	get_dev(1, argc, argv);
+
+	if (cfg.block_count > LNVM_GET_L2P_MAX_ENTRY) {
+		fprintf(stderr, "invalid 'block_count' param:%d\n", cfg.block_count);
+		return EINVAL;
 	}
-	get_dev(optind, argc, argv);
 
 	/* Every entry is 8 bytes */
-	buffer = malloc(nlb << 3);
+	buffer = malloc(cfg.block_count << 3);
 	if (!buffer) {
 		fprintf(stderr, "fail to allocate memory for l2p table\n");
 		return EINVAL;
 	}
 
-	err = lnvm_get_l2p_tbl(nsid, slba, nlb, LNVM_GET_L2P_MAX_PAGE, buffer, (nlb << 3));
+	err = lnvm_get_l2p_tbl(cfg.namespace_id, cfg.start_block, cfg.block_count,
+			LNVM_GET_L2P_MAX_PAGE, buffer, (cfg.block_count << 3));
 	if (!err) {
-		printf("LightNvm Get L2P Table %d: slba = %#llx, nlb = %#x\n", nsid, slba, nlb);
+		printf("LightNvm Get L2P Table %d: slba = %#llx, nlb = %#x\n",
+			cfg.namespace_id, cfg.start_block, cfg.block_count);
 
 		l2p_entry = (__u64 *)buffer;
-		for (i = 0; i < nlb; i ++) {
+		for (i = 0; i < cfg.block_count; i ++) {
 			printf("%#llx\t", l2p_entry[i]);
 			if ((i % 4) == 3)
 				printf("\n");
@@ -1295,247 +1307,199 @@ static int lnvm_get_l2p_table(int argc, char **argv)
 	}
 	else if (err > 0) {
 		fprintf(stderr, "LightNvm Get L2P Table Status: %s NSID:%d, Slba:%#llx, nlb:%#x\n",
-			nvme_status_to_string(err), nsid, slba, nlb);
+			nvme_status_to_string(err), cfg.namespace_id, cfg.start_block, cfg.block_count);
 	}
 
 	return err;
 }
 
-static int lnvm_write(int argc, char **argv)
+static int lnvm_io(int opcode, char *command, int argc, char **argv)
 {
 	struct nvme_passthru_cmd cmd;
 	struct nvme_lnvm_rw_command lnvmrw;
-	void *buffer = NULL;
-	int err, opt, dfd = STDIN_FILENO, long_index = 0;
-	unsigned int nsid = 0, data_size = 0;
-	__u8 prinfo = 0, al = 0, af = 0;
-	static struct option opts[] = {
-		{"namespace-id", required_argument, 0, 'n'},
-		{"start-block", required_argument, 0, 's'},
-		{"block-count", required_argument, 0, 'c'},
-		{"data-size", required_argument, 0, 'z'},
-		{"data", required_argument, 0, 'd'},
-		{"prinfo", required_argument, 0, 'p'},
-		{"limited-retry", no_argument, 0, 'l'},
-		{"force-unit-access", no_argument, 0, 'f'},
-		{"incompressible", no_argument, 0, 'i'},
-		{"sequential-request", no_argument, 0, 'r'},
-		{"access-latency", required_argument, 0, 'a'},
-		{"access-frequency", required_argument, 0, 'e'},
-		{ 0, 0, 0, 0}
+	struct timeval start_time, end_time;
+	void *buffer, *mbuffer = NULL;
+	int err, dfd = opcode & 1 ? STDIN_FILENO : STDOUT_FILENO;
+
+	struct config {
+		__u32 namespace_id;
+		__u64 start_block;
+		__u16 block_count;
+		__u32 data_size;
+		__u32 metadata_size;
+		char  *data;
+		__u8  prinfo;
+		__u8  limited_retry;
+		__u8  force_unit_access;
+		__u8  show;
+		__u8  dry_run;
+		__u8  latency;
+	};
+	struct config cfg;
+
+	const struct config defaults = {
+		.namespace_id = 0,
+		.start_block     = 0,
+		.block_count     = 0,
+		.data_size       = 0,
+		.metadata_size   = 0,
+		.data            = "",
+		.prinfo          = 0,
 	};
 
+	const struct argconfig_commandline_options command_line_options[] = {
+		{"namespace-id",    "NUM",  CFG_POSITIVE, &defaults.namespace_id,    required_argument, NULL},
+		{"n",               "NUM",  CFG_POSITIVE, &defaults.namespace_id,    required_argument, NULL},
+		{"s",                 "NUM",  CFG_LONG_SUFFIX, &defaults.start_block,       required_argument, NULL},
+		{"start-block",       "NUM",  CFG_LONG_SUFFIX, &defaults.start_block,       required_argument, NULL},
+		{"c",                 "NUM",  CFG_LONG_SUFFIX, &defaults.block_count,       required_argument, NULL},
+		{"block-count",       "NUM",  CFG_LONG_SUFFIX, &defaults.block_count,       required_argument, NULL},
+		{"z",                 "NUM",  CFG_LONG_SUFFIX, &defaults.data_size,         required_argument, NULL},
+		{"data-size",         "NUM",  CFG_LONG_SUFFIX, &defaults.data_size,         required_argument, NULL},
+		{"y",                 "NUM",  CFG_POSITIVE,    &defaults.metadata_size,     required_argument, NULL},
+		{"metadata-size",     "NUM",  CFG_POSITIVE,    &defaults.metadata_size,     required_argument, NULL},
+		{"d",                 "FILE", CFG_STRING,      &defaults.data,              required_argument, NULL},
+		{"data",              "FILE", CFG_STRING,      &defaults.data,              required_argument, NULL},
+		{"p",                 "NUM",  CFG_POSITIVE,    &defaults.prinfo,            required_argument, NULL},
+		{"prinfo",            "NUM",  CFG_POSITIVE,    &defaults.prinfo,            required_argument, NULL},
+		{"l",                 "",     CFG_NONE,        &defaults.limited_retry,     no_argument,       NULL},
+		{"limited-retry",     "",     CFG_NONE,        &defaults.limited_retry,     no_argument,       NULL},
+		{"f",                 "",     CFG_NONE,        &defaults.force_unit_access, no_argument,       NULL},
+		{"force-unit-access", "",     CFG_NONE,        &defaults.force_unit_access, no_argument,       NULL},
+		{"v",                 "",     CFG_NONE,        &defaults.show,              no_argument,       NULL},
+		{"show-command",      "",     CFG_NONE,        &defaults.show,              no_argument,       NULL},
+		{"w",                 "",     CFG_NONE,        &defaults.dry_run,           no_argument,       NULL},
+		{"dry-run",           "",     CFG_NONE,        &defaults.dry_run,           no_argument,       NULL},
+		{"t",                 "",     CFG_NONE,        &defaults.latency,           no_argument,       NULL},
+		{"latency",           "",     CFG_NONE,        &defaults.latency,           no_argument,       NULL},
+		{0}
+	};
+
+	argconfig_parse(argc, argv, command, command_line_options,
+			&defaults, &cfg, sizeof(cfg));
 	memset(&lnvmrw, 0, sizeof(lnvmrw));
-	while ((opt = getopt_long(argc, (char **)argv, "n:p:s:c:z:d:lfira:e:", opts,
-							&long_index)) != -1) {
-		switch(opt) {
-		case 'n':
-			get_int(optarg, &nsid);
-			break;
-		case 's': get_long(optarg, &lnvmrw.slba); break;
-		case 'c': get_short(optarg, &lnvmrw.length); break;
-		case 'z': get_int(optarg, &data_size); break;
-		case 'p':
-			get_byte(optarg, &prinfo);
-			if (prinfo > 0xf)
-				return EINVAL;
-			lnvmrw.control |= (prinfo << 10);
-			break;
-		case 'l':
-			lnvmrw.control |= NVME_RW_LR;
-			break;
-		case 'f':
-			lnvmrw.control | NVME_RW_FUA;
-			break;
-		case 'd': 
-			dfd = open(optarg, O_RDONLY);
-			if (dfd < 0) {
-				perror(optarg);
-				return EINVAL;
-			}
-			break;
-		case 'i':
-			lnvmrw.dsmgmt |= NVME_RW_DSM_COMPRESSED;
-			break;
-		case 'r':
-			lnvmrw.dsmgmt |= NVME_RW_DSM_SEQ_REQ;
-			break;
-		case 'a':
-			get_byte(optarg, &al);
-			if (al > 3)
-				return EINVAL;
-			lnvmrw.dsmgmt |= (al << 4);
-			break;
-		case 'e':
-			get_byte(optarg, &af);
-			if (af > 0xf)
-				return EINVAL;
-			lnvmrw.dsmgmt |= af;
-			break;
-		default:
-			return EINVAL;
-		}
-	};
-	get_dev(optind, argc, argv);
 
-	if (lnvmrw.length == 0) {
+	lnvmrw.slba    = cfg.start_block;
+	if (cfg.prinfo > 0xf)
+		return EINVAL;
+	lnvmrw.control |= (cfg.prinfo << 10);
+	if (cfg.limited_retry)
+		lnvmrw.control |= NVME_RW_LR;
+	if (cfg.force_unit_access)
+		lnvmrw.control |= NVME_RW_FUA;
+	if (cfg.block_count == 0) {
 		fprintf(stderr, "block count is invalid\n");
 		return EINVAL;
 	}
-	lnvmrw.length -= 1;
+	lnvmrw.length = cfg.block_count - 1;
 
-	if (!data_size) {
+	if (!cfg.data_size) {
 		fprintf(stderr, "data size not provided\n");
 		return EINVAL;
 	}
-	if (data_size > PAGE_SIZE) {
+	if (cfg.data_size > PAGE_SIZE) {
 		fprintf(stderr, "data size is too large\n");
 		return EINVAL;
 	}
 	buffer = malloc(PAGE_SIZE);
-	if (buffer == NULL)
-	{
+	if (buffer == NULL) 	{
 		fprintf(stderr, "failed to allocate memory to store data\n");
 		return EINVAL;
 	}
+	if (cfg.metadata_size) {
+		mbuffer = malloc(cfg.metadata_size);
+		if (mbuffer == NULL) 	{
+			fprintf(stderr, "failed to allocate memory to store meta-data\n");
+			return EINVAL;
+		}
+	}
 
-	if (read(dfd, (void *)buffer, data_size) < 0) {
-		fprintf(stderr, "failed to read data\n");
+	if (strlen(cfg.data)){
+		if (opcode & 1)
+			dfd = open(cfg.data, O_RDONLY);
+		else
+			dfd = open(cfg.data, O_WRONLY | O_CREAT,
+				   S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP| S_IROTH);
+		if (dfd < 0) {
+			perror(cfg.data);
+			return EINVAL;
+		}
+	}
+	get_dev(1, argc, argv);
+
+	if ((opcode & 1) && read(dfd, (void *)buffer, cfg.data_size) < 0) {
+		fprintf(stderr, "failed to read data buffer from input file\n");
+		return EINVAL;
+	}
+	if ((opcode & 1) && cfg.metadata_size && read(dfd, (void *)mbuffer, cfg.metadata_size) < 0) {
+		fprintf(stderr, "failed to read meta-data buffer from input file\n");
 		return EINVAL;
 	}
 
 	memcpy(&cmd, &lnvmrw, sizeof(lnvmrw));
-	cmd.nsid = nsid;
-        cmd.opcode = nvme_cmd_write;
+	cmd.nsid = cfg.namespace_id;
+	cmd.opcode = opcode;
 	cmd.addr = (__u64)buffer;
 	cmd.data_len = PAGE_SIZE;
+	if (cfg.metadata_size) {
+		cmd.metadata = (__u64)mbuffer;
+		cmd.metadata_len = cfg.metadata_size;
+	}
+
+	if (cfg.show) {
+		printf("nsid         : %u\n"   , cmd.nsid);
+		printf("opcode       : %02x\n" , cmd.opcode);
+		printf("flags        : %02x\n" , cmd.flags);
+		printf("control      : %04x\n" , lnvmrw.control);
+		printf("nblocks      : %04x\n" , (lnvmrw.length + 1));
+		printf("metadata     : %p\n"   , (void *)cmd.metadata);
+		printf("addr         : %p\n"   , (void *)cmd.addr);
+		printf("slba         : %p\n"   , (void *)lnvmrw.slba);
+		printf("dsmgmt       : %08x\n" , lnvmrw.dsmgmt);
+		if (cfg.dry_run)
+			goto free_and_return;
+	}
+
+	gettimeofday(&start_time, NULL);
 	err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
+	gettimeofday(&end_time, NULL);
+	if (cfg.latency)
+		fprintf(stdout, " latency: %s: %llu us\n",
+			command, elapsed_utime(start_time, end_time));
 	if (err < 0)
 		perror("ioctl");
-	else
-		printf("LightNvm write:%s(%04x)\n", nvme_status_to_string(err), err);
-	close(dfd);
+	else if (err)
+		printf("%s:%s(%04x)\n", command, nvme_status_to_string(err), err);
+	else {
+		if (!(opcode & 1)) {
+			if (write(dfd, (void *)buffer, cfg.data_size) < 0) {
+				fprintf(stderr, "failed to write data to output file\n");
+				return EINVAL;
+			}
+			if ((cfg.metadata_size) && (write(dfd, (void *)mbuffer, cfg.metadata_size) < 0)) {
+				fprintf(stderr, "failed to write meta-data to output file\n");
+				return EINVAL;
+			}
+			fsync(dfd);
+		} else
+			printf("%s: success\n", command);
+	}
+
+free_and_return:
+	free(buffer);
+	if (cfg.metadata_size)
+		free(mbuffer);
 	return 0;
+}
+
+static int lnvm_write(int argc, char **argv)
+{
+	return lnvm_io(nvme_cmd_write, "LightNVM write", argc, argv);
 }
 
 static int lnvm_read(int argc, char **argv)
 {
-	struct nvme_passthru_cmd cmd;
-	struct nvme_lnvm_rw_command lnvmrw;
-	void *buffer = NULL;
-	int err, opt, dfd = STDOUT_FILENO, long_index = 0;
-	unsigned int nsid = 0, data_size = 0;
-	__u8 prinfo = 0, al = 0, af = 0;
-	static struct option opts[] = {
-		{"namespace-id", required_argument, 0, 'n'},
-		{"start-block", required_argument, 0, 's'},
-		{"block-count", required_argument, 0, 'c'},
-		{"data-size", required_argument, 0, 'z'},
-		{"data", required_argument, 0, 'd'},
-		{"prinfo", required_argument, 0, 'p'},
-		{"limited-retry", no_argument, 0, 'l'},
-		{"force-unit-access", no_argument, 0, 'f'},
-		{"incompressible", no_argument, 0, 'i'},
-		{"sequential-request", no_argument, 0, 'r'},
-		{"access-latency", required_argument, 0, 'a'},
-		{"access-frequency", required_argument, 0, 'e'},
-		{ 0, 0, 0, 0}
-	};
-
-	memset(&lnvmrw, 0, sizeof(lnvmrw));
-	while ((opt = getopt_long(argc, (char **)argv, "n:p:s:c:z:d:lfira:e:", opts,
-							&long_index)) != -1) {
-		switch(opt) {
-		case 'n':
-			get_int(optarg, &nsid);
-			break;
-		case 's': get_long(optarg, &lnvmrw.slba); break;
-		case 'c': get_short(optarg, &lnvmrw.length); break;
-		case 'z': get_int(optarg, &data_size); break;
-		case 'p':
-			get_byte(optarg, &prinfo);
-			if (prinfo > 0xf)
-				return EINVAL;
-			lnvmrw.control |= (prinfo << 10);
-			break;
-		case 'l':
-			lnvmrw.control |= NVME_RW_LR;
-			break;
-		case 'f':
-			lnvmrw.control | NVME_RW_FUA;
-			break;
-		case 'd': 
-			dfd = open(optarg, O_WRONLY);
-			if (dfd < 0) {
-				perror(optarg);
-				return EINVAL;
-			}
-			break;
-		case 'i':
-			lnvmrw.dsmgmt |= NVME_RW_DSM_COMPRESSED;
-			break;
-		case 'r':
-			lnvmrw.dsmgmt |= NVME_RW_DSM_SEQ_REQ;
-			break;
-		case 'a':
-			get_byte(optarg, &al);
-			if (al > 3)
-				return EINVAL;
-			lnvmrw.dsmgmt |= (al << 4);
-			break;
-		case 'e':
-			get_byte(optarg, &af);
-			if (af > 0xf)
-				return EINVAL;
-			lnvmrw.dsmgmt |= af;
-			break;
-		default:
-			return EINVAL;
-		}
-	};
-	get_dev(optind, argc, argv);
-
-	if (lnvmrw.length == 0) {
-		fprintf(stderr, "block count is invalid\n");
-		return EINVAL;
-	}
-	lnvmrw.length -= 1;
-
-	if (!data_size) {
-		fprintf(stderr, "data size not provided\n");
-		return EINVAL;
-	}
-	if (data_size > PAGE_SIZE) {
-		fprintf(stderr, "data size is too large\n");
-		return EINVAL;
-	}
-	buffer = malloc(PAGE_SIZE);
-	if (buffer == NULL)
-	{
-		fprintf(stderr, "failed to allocate memory to store data\n");
-		return EINVAL;
-	}
-
-	memcpy(&cmd, &lnvmrw, sizeof(lnvmrw));
-	cmd.nsid = nsid;
-        cmd.opcode = nvme_cmd_read;
-	cmd.addr = (__u64)buffer;
-	cmd.data_len = PAGE_SIZE;
-	err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
-	if (err < 0)
-		perror("ioctl");
-	else if (err > 0)
-		printf("LightNvm read:%s(%04x)\n", nvme_status_to_string(err), err);
-	else {
-		if (write(dfd, (void *)buffer, data_size) < 0) {
-			fprintf(stderr, "failed to write data\n");
-			return EINVAL;
-		}
-		fsync(dfd);
-		printf("LightNvm read:%s(%04x)\n", nvme_status_to_string(err), err);
-	}
-	close(dfd);
-	return 0;
+	return lnvm_io(nvme_cmd_read, "LightNVM read", argc, argv);
 }
 
 static int id_ns(int argc, char **argv)
@@ -2102,27 +2066,27 @@ static int sec_send(int argc, char **argv)
 		return ENOMEM;
 	}
 
-        memset(&cmd, 0, sizeof(cmd));
-        cmd.opcode   = nvme_admin_security_send;
-        cmd.cdw10    = cfg.secp << 24 | cfg.spsp << 8;
-        cmd.cdw11    = cfg.tl;
-        cmd.data_len = sec_size;
-        cmd.addr     = (__u64)sec_buf;
+	memset(&cmd, 0, sizeof(cmd));
+	cmd.opcode   = nvme_admin_security_send;
+	cmd.cdw10    = cfg.secp << 24 | cfg.spsp << 8;
+	cmd.cdw11    = cfg.tl;
+	cmd.data_len = sec_size;
+	cmd.addr     = (__u64)sec_buf;
 
-        err = ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd);
-        if (err < 0)
-                return errno;
-        else if (err != 0)
-                fprintf(stderr, "NVME Security Send Command Error:%d\n", err);
+	err = ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd);
+	if (err < 0)
+		return errno;
+	else if (err != 0)
+		fprintf(stderr, "NVME Security Send Command Error:%d\n", err);
 	else
-                printf("NVME Security Send Command Success:%d\n", cmd.result);
-        return err;
+		printf("NVME Security Send Command Success:%d\n", cmd.result);
+	return err;
 }
 
 static int flush(int argc, char **argv)
 {
 	struct nvme_passthru_cmd cmd;
-        int err;
+	int err;
 
 	struct config {
 		__u32 namespace_id;
@@ -2160,7 +2124,7 @@ static int flush(int argc, char **argv)
 static int resv_acquire(int argc, char **argv)
 {
 	struct nvme_passthru_cmd cmd;
-        int err;
+	int err;
 	__u64 payload[2];
 
 	struct config {
@@ -2224,19 +2188,19 @@ static int resv_acquire(int argc, char **argv)
 	payload[1] = cfg.prkey;
 
 	memset(&cmd, 0, sizeof(cmd));
-        cmd.opcode   = nvme_cmd_resv_acquire;
-        cmd.nsid     = cfg.namespace_id;
-        cmd.cdw10    = cfg.rtype << 8 | cfg.iekey << 3 | cfg.racqa;
-        cmd.addr     = (__u64)payload;
-        cmd.data_len = sizeof(payload);
+	cmd.opcode   = nvme_cmd_resv_acquire;
+	cmd.nsid     = cfg.namespace_id;
+	cmd.cdw10    = cfg.rtype << 8 | cfg.iekey << 3 | cfg.racqa;
+	cmd.addr     = (__u64)payload;
+	cmd.data_len = sizeof(payload);
 
-        err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
-        if (err < 0)
-                return errno;
-        else if (err != 0)
-                fprintf(stderr, "NVME IO command error:%04x\n", err);
-        else
-                printf("NVME Reservation Acquire success\n");
+	err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
+	if (err < 0)
+		return errno;
+	else if (err != 0)
+		fprintf(stderr, "NVME IO command error:%04x\n", err);
+	else
+		printf("NVME Reservation Acquire success\n");
 	return 0;
 }
 
@@ -2307,26 +2271,26 @@ static int resv_register(int argc, char **argv)
 	payload[1] = cfg.nrkey;
 
 	memset(&cmd, 0, sizeof(cmd));
-        cmd.opcode   = nvme_cmd_resv_register;
-        cmd.nsid     = cfg.namespace_id;
+	cmd.opcode   = nvme_cmd_resv_register;
+	cmd.nsid     = cfg.namespace_id;
 	cmd.cdw10    = cfg.cptpl << 30 | cfg.iekey << 3 | cfg.rrega;
-        cmd.addr     = (__u64)payload;
-        cmd.data_len = sizeof(payload);
+	cmd.addr     = (__u64)payload;
+	cmd.data_len = sizeof(payload);
 
-        err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
-        if (err < 0)
-                return errno;
-        else if (err != 0)
-                fprintf(stderr, "NVME IO command error:%04x\n", err);
-        else
-                printf("NVME Reservation  success\n");
+	err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
+	if (err < 0)
+		return errno;
+	else if (err != 0)
+		fprintf(stderr, "NVME IO command error:%04x\n", err);
+	else
+		printf("NVME Reservation  success\n");
 	return 0;
 }
 
 static int resv_release(int argc, char **argv)
 {
 	struct nvme_passthru_cmd cmd;
-        int err;
+	int err;
 
 	struct config {
 		__u32 namespace_id;
@@ -2387,26 +2351,27 @@ static int resv_release(int argc, char **argv)
 	}
 
 	memset(&cmd, 0, sizeof(cmd));
-        cmd.opcode   = nvme_cmd_resv_release;
-        cmd.nsid     = cfg.namespace_id;
-	cmd.cdw10    = cfg.rtype << 8 | cfg.iekey << 3 | cfg.rrela;
-        cmd.addr     = (__u64)&cfg.crkey;
-        cmd.data_len = sizeof(cfg.crkey);
+	cmd.opcode = nvme_cmd_resv_release;
+	cmd.nsid = cfg.namespace_id;
+	cmd.cdw10 = cfg.rtype << 8 | cfg.iekey << 3 | cfg.rrela;
 
-        err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
-        if (err < 0)
-                return errno;
-        else if (err != 0)
-                fprintf(stderr, "NVME IO command error:%04x\n", err);
-        else
-                printf("NVME Reservation Register success\n");
+	cmd.addr = (__u64)&cfg.crkey;
+	cmd.data_len = sizeof(cfg.crkey);
+
+	err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
+	if (err < 0)
+		return errno;
+	else if (err != 0)
+		fprintf(stderr, "NVME IO command error:%04x\n", err);
+	else
+		printf("NVME Reservation Register success\n");
 	return 0;
 }
 
 static int resv_report(int argc, char **argv)
 {
 	struct nvme_passthru_cmd cmd;
-        int err;
+	int err;
 	struct nvme_reservation_status *status;
 
 	struct config {
@@ -2458,20 +2423,20 @@ static int resv_report(int argc, char **argv)
 	}
 
 	memset(&cmd, 0, sizeof(cmd));
-        cmd.opcode   = nvme_cmd_resv_report;
-        cmd.nsid     = cfg.namespace_id;
-        cmd.cdw10    = cfg.numd;
-        cmd.addr     = (__u64)status;
-        cmd.data_len = cfg.numd << 2;
+	cmd.opcode   = nvme_cmd_resv_report;
+	cmd.nsid     = cfg.namespace_id;
+	cmd.cdw10    = cfg.numd;
+	cmd.addr     = (__u64)status;
+	cmd.data_len = cfg.numd << 2;
 
-        err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
-        if (err < 0)
-                return errno;
-        else if (err != 0)
-                fprintf(stderr, "NVME IO command error:%04x\n", err);
-        else {
+	err = ioctl(fd, NVME_IOCTL_IO_CMD, &cmd);
+	if (err < 0)
+		return errno;
+	else if (err != 0)
+		fprintf(stderr, "NVME IO command error:%04x\n", err);
+	else {
 		if (!cfg.raw_binary) {
-                	printf("NVME Reservation Report success\n");
+			printf("NVME Reservation Report success\n");
 			show_nvme_resv_report(status);
 		} else
 			d_raw((unsigned char *)status, cfg.numd << 2);
@@ -2484,7 +2449,7 @@ static int submit_io(int opcode, char *command, int argc, char **argv)
 	struct nvme_user_io io;
 	struct timeval start_time, end_time;
 	void *buffer, *mbuffer = NULL;
-        int err, dfd = opcode & 1 ? STDIN_FILENO : STDOUT_FILENO;
+	int err, dfd = opcode & 1 ? STDIN_FILENO : STDOUT_FILENO;
 
 	struct config {
 		__u64 start_block;
@@ -2595,7 +2560,7 @@ static int submit_io(int opcode, char *command, int argc, char **argv)
 		return EINVAL;
 	}
 
-        io.opcode = opcode;
+	io.opcode = opcode;
 	io.addr   = (__u64)buffer;
 	if (cfg.metadata_size)
 		io.metadata = (__u64)mbuffer;
@@ -2705,28 +2670,28 @@ static int sec_recv(int argc, char **argv)
 			return ENOMEM;
 		}
 	}
-        memset(&cmd, 0, sizeof(cmd));
-        cmd.opcode   = nvme_admin_security_recv;
-        cmd.cdw10    = cfg.secp << 24 | cfg.spsp << 8;
-        cmd.cdw11    = cfg.al;
-        cmd.data_len = cfg.size;
-        cmd.addr     = (__u64)sec_buf;
+	memset(&cmd, 0, sizeof(cmd));
+	cmd.opcode   = nvme_admin_security_recv;
+	cmd.cdw10    = cfg.secp << 24 | cfg.spsp << 8;
+	cmd.cdw11    = cfg.al;
+	cmd.data_len = cfg.size;
+	cmd.addr     = (__u64)sec_buf;
 
-        err = ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd);
-        if (err < 0)
-                return errno;
-        else if (err != 0)
-                fprintf(stderr, "NVME Security Receivce Command Error:%d\n",
-									err);
+	err = ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd);
+	if (err < 0)
+		return errno;
+	else if (err != 0)
+		fprintf(stderr, "NVME Security Receivce Command Error:%d\n",
+							err);
 	else {
 		if (!cfg.raw_binary) {
-                	printf("NVME Security Receivce Command Success:%d\n",
-							cmd.result);
+			printf("NVME Security Receivce Command Success:%d\n",
+					cmd.result);
 			d(sec_buf, cfg.size, 16, 1);
 		} else if (cfg.size)
 			d_raw((unsigned char *)&sec_buf, cfg.size);
 	}
-        return err;
+	return err;
 }
 
 static int nvme_passthru(int argc, char **argv, int ioctl_cmd)

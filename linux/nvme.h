@@ -592,7 +592,7 @@ struct nvme_command {
 
 		struct nvme_lnvm_l2ptbl_command l2ptbl;
 		struct nvme_lnvm_rw_command lnvmrw;
-	};
+	} nvme_cmd_un;
 };
 
 enum {

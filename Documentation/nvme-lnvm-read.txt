@@ -13,19 +13,18 @@ SYNOPSIS
 			[--start-block=<slba> | -s <slba>]
 			[--block-count=<nlb> | -c <nlb>]
 			[--data-size=<size> | -z <size>]
+			[--metadata-size=<size> | -y <size>]
 			[--data=<data-file> | -d <data-file>]
 			[--prinfo=<prinfo> | -p <prinfo>]
 			[--limited-retry | -l]
 			[--force-unit-access | -f]
-			[--incompressible | -i]
-			[--sequential-request | -r]
-			[--access-latency=<latency> | -d <latency>]
-			[--access-frequency=<freq> | -p <freq>]
+			[--latency | -t]
 
 DESCRIPTION
 -----------
-The Read command reads the logical blocks specified by the command
-from the medium. 
+The Read command reads the logical blocks specified by the command from
+the medium and copies to the data data buffer provided. Will use stdout
+by default if you don't provide a file.
 
 OPTIONS
 -------
@@ -45,6 +44,10 @@ OPTIONS
 --data-size=<size>::
 	Number of bytes data will be read from the medium. 
 	The size is no more than 4096.
+
+-y <size>::
+--metadata-size=<size>::
+	Number of bytes meta-data will be written to the medium. 
 
 -d <data-file>::
 --data=<data-file>::
@@ -67,52 +70,9 @@ OPTIONS
 	If set to '1', data should be returned from non-volatile media.
 	This is optional.
 
--i::
---incompressible::
-	If set to '1', data should be returned from non-volatile media.
-	If cleaned to '0', then no information on compression is provided.
-	This is optional.
-
--r::
---sequential-request::
-	If set to '1', this command is part of a sequential read that includes 
-	multiple Read command.
-	If cleaned to '0', then no information on sequential access is provided.
-	This is optional.
-
--d <latency>::
---access-latency=<latency>::
-	Access latency.
-	This is optional.
-+
-[]
-|==================
-|Latency|Description
-|0|None. No latency information provided. 
-|1|Idle. Longer latency acceptable. 
-|2|Normal. Typical latency. 
-|3|Low. Smallest possible latency. 
-|==================
-
--p <freq>::
---access-frequency=<freq>::
-	Access frequency.
-	This is optional.
-+
-[]
-|==================
-|Freq|Description
-|0|No frequency information provided. 
-|1|Typical number of reads and writes expected for the LBA range. 
-|2|Infrequent writes and infrequent reads to the LBA range indicated.
-|3|Infrequent writes and frequent reads to the LBA range indicated.
-|4|Frequent writes and infrequent reads to the LBA range indicated.
-|5|Frequent writes and frequent reads to the LBA range indicated.
-|6|One time read.
-|7|Speculative read.
-|8|The LBA range is going to be overwritten in the near future.
-|9-15|Reserved.
-|==================
+--latency::
+-t::
+	Print out the latency the IOCTL took (in us).
 
 EXAMPLES
 --------
