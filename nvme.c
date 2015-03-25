@@ -1553,7 +1553,7 @@ static int id_ns(int argc, char **argv)
 
 		/* Check if it is a LightNvm namespace */
 		if (ns.nsfeat & NVME_NS_FEAT_LIGHTNVM)
-			err = lnvm_id_ns(nsid, raw);
+			err = lnvm_id_ns(cfg.namespace_id, cfg.raw_binary);
 	}
 	else if (err > 0)
 		fprintf(stderr, "NVMe Status: %s NSID:%d\n", nvme_status_to_string(err),
@@ -2623,11 +2623,7 @@ static int write_cmd(int argc, char **argv)
 static int sec_recv(int argc, char **argv)
 {
 	struct nvme_admin_cmd cmd;
-<<<<<<< HEAD
-	int err, opt, long_index = 0, raw = 0;
-=======
         int err;
->>>>>>> master
 	void *sec_buf = NULL;
 
 	struct config {
