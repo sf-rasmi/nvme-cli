@@ -872,6 +872,7 @@ struct list_item {
 	struct nvme_id_ns   ns;
 	unsigned            block;
 	__le32              ver;
+	unsigned            type;
 };
 
 #ifdef LIBUDEV_EXISTS
@@ -913,16 +914,23 @@ static void print_list_item(struct list_item list_item)
 	sprintf(version,"%d.%d", (list_item.ver >> 16),
 		(list_item.ver >> 8) & 0xff);
 
-	fprintf(stdout, "%-8s\t%-.20s\t%-8s\t%-8d\t%-26s\t%-.16s\n", list_item.node,
-		list_item.ctrl.mn, version, list_item.nsid, usage, format);
+	/* Check if it is a LightNvm namespace */
+	if (list_item.ns.nsfeat & NVME_NS_FEAT_LIGHTNVM)
+		list_item.type = 1;
+	else
+		list_item.type = 0;
+
+	fprintf(stdout, "%-8s\t%-.20s\t%-8s\t%-8d\t%-8s\t%-26s\t%-.16s\n", list_item.node,
+		list_item.ctrl.mn, version, list_item.nsid, (list_item.type)?"LightNVM":"NVMe",
+		usage, format);
 }
 
 static void print_list_items(struct list_item *list_items, unsigned len)
 {
-	fprintf(stdout,"%-8s\t%-20s\t%-8s\t%-8s\t%-26s\t%-16s\n",
-		"Node","Vendor","Version","Namepace", "Usage", "Format");
-	fprintf(stdout,"%-8s\t%-20s\t%-8s\t%-8s\t%-26s\t%-16s\n",
-		"----","------","-------","--------","------","-------");
+	fprintf(stdout,"%-8s\t%-20s\t%-8s\t%-8s\t%-8s\t%-26s\t%-16s\n",
+		"Node","Vendor","Version","Namepace", "Type", "Usage", "Format");
+	fprintf(stdout,"%-8s\t%-20s\t%-8s\t%-8s\t%-8s\t%-26s\t%-16s\n",
+		"----","------","-------","--------","----","------","-------");
 	for (unsigned i=0 ; i<len ; i++)
 		print_list_item(list_items[i]);
 
@@ -976,7 +984,7 @@ static int list(int argc, char **argv)
 				return err;
 			strcpy(list_items[count].node, node);
 			list_items[count].block = S_ISBLK(nvme_stat.st_mode);
-            get_version(&list_items[count]);
+			get_version(&list_items[count]);
 			count++;
 		}
 	}
