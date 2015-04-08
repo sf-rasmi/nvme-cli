@@ -1,2 +1,4 @@
 nvme
 *.xml
+a.out
+*.o
