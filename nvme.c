@@ -1,23 +1,24 @@
 /*
  * nvme.c -- NVM-Express command line utility.
  *
- * Copyright (c) 2014, Intel Corporation.
+ * Copyright (c) 2014-2015, Intel Corporation.
  *
  * Written by Keith Busch <keith.busch@intel.com>
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 2 of the License, or
- * (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ *    http://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
  * This program uses NVMe IOCTLs to run native nvme commands to a device.
  */
 
@@ -220,7 +221,7 @@ static void show_fw_log(struct nvme_firmware_log_page *fw_log)
 
 	printf("Firmware Log for device:%s\n", devicename);
 	printf("afi  : %#x\n", fw_log->afi);
-	for (i = 0; i < 8; i++)
+	for (i = 0; i < 7; i++)
 		if (fw_log->frs[i])
 			printf("frs%d : %#016llx (%s)\n", i + 1, fw_log->frs[i],
 						fw_to_string(fw_log->frs[i]));
@@ -2802,11 +2803,11 @@ static int nvme_passthru(int argc, char **argv, int ioctl_cmd)
 	argconfig_parse(argc, argv, "nvme_passthrou", command_line_options,
 			&defaults, &cfg, sizeof(cfg));
 
-	cmd.cdw2         = cfg.cdw13;
-	cmd.cdw3         = cfg.cdw13;
-	cmd.cdw10        = cfg.cdw13;
-	cmd.cdw11        = cfg.cdw13;
-	cmd.cdw12        = cfg.cdw13;
+	cmd.cdw2         = cfg.cdw2;
+	cmd.cdw3         = cfg.cdw3;
+	cmd.cdw10        = cfg.cdw10;
+	cmd.cdw11        = cfg.cdw11;
+	cmd.cdw12        = cfg.cdw12;
 	cmd.cdw13        = cfg.cdw13;
 	cmd.cdw14        = cfg.cdw14;
 	cmd.cdw15        = cfg.cdw15;
