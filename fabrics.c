@@ -92,6 +92,7 @@ static const char * const trtypes[] = {
 	[NVMF_TRTYPE_RDMA]	= "rdma",
 	[NVMF_TRTYPE_FC]	= "fibre-channel",
 	[NVMF_TRTYPE_LOOP]	= "loop",
+	[NVMF_TRTYPE_TCP]	= "tcp",
 };
 
 static const char *trtype_str(__u8 trtype)
@@ -675,6 +676,35 @@ static int connect_ctrl(struct nvmf_disc_rsp_page_entry *e)
 			len = sprintf(p, ",traddr=%.*s",
 				      space_strip_len(NVMF_TRADDR_SIZE, e->traddr),
 				      e->traddr);
+			if (len < 0)
+				return -EINVAL;
+			p += len;
+			break;
+		default:
+			fprintf(stderr, "skipping unsupported adrfam\n");
+			return -EINVAL;
+		}
+		break;
+	case NVMF_TRTYPE_TCP:
+		switch (e->adrfam) {
+		case NVMF_ADDR_FAMILY_IP4:
+		case NVMF_ADDR_FAMILY_IP6:
+			/* FALLTHRU */
+			len = sprintf(p, ",transport=tcp");
+			if (len < 0)
+				return -EINVAL;
+			p += len;
+
+			len = sprintf(p, ",traddr=%.*s",
+				      space_strip_len(NVMF_TRADDR_SIZE, e->traddr),
+				      e->traddr);
+			if (len < 0)
+				return -EINVAL;
+			p += len;
+
+			len = sprintf(p, ",trsvcid=%.*s",
+				      space_strip_len(NVMF_TRSVCID_SIZE, e->trsvcid),
+				      e->trsvcid);
 			if (len < 0)
 				return -EINVAL;
 			p += len;
