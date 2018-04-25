@@ -19,6 +19,10 @@ SYNOPSIS
 		[--queue-size=<#>         | -Q <#>]
 		[--keep-alive-tmo=<#>     | -k <#>]
 		[--reconnect-delay=<#>    | -c <#>]
+		[--host-pdu-dgst=<on|off>     | -p <on|off> ]
+		[--host-data-dgst=<on|off>    | -P <on|off> ]
+		[--target-pdu-dgst=<on|off>   | -d <on|off> ]
+		[--target-data-dgst=<on|off>  | -D <on|off> ]
 
 DESCRIPTION
 -----------
@@ -87,6 +91,23 @@ OPTIONS
 --reconnect-delay=<#>::
 	Overrides the default delay (in seconds) before reconnect is attempted
 	after a connect loss.
+
+-p <on|off>::
+--host-pdu-dgst=<on|off>::
+        Enable PDU header digest protection for host. Default: off
+
+-d <on|off>
+--host-data-dgst=<on|off>::
+        Enable data digest protection for host. Default: off
+
+-P <on|off>
+--target-pdu-dgst=<on|off>::
+        Enable PDU header digest protection for target. Default: off
+
+-D <on|off>
+--target-data-dgst=<on|off>::
+        Enable data digest protection for target. Default: off
+
 
 EXAMPLES
 --------

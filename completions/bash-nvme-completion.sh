@@ -202,7 +202,8 @@ nvme_list_opts () {
 		"connect")
 		opts+=" --transport= -t --nqn= -n --traddr= -a --trsvcid -s \
 			--hostnqn= -q --nr-io-queues= -i --keep-alive-tmo -k \
-			--reconnect-delay -r"
+			--reconnect-delay -r --host_pdu_dgst -p --host-data-dgst -d \
+                        --target-pdu-dgst -P --target-data-dgst -D"
 			;;
 		"disconnect")
 		opts+=" --nqn -n --device -d"

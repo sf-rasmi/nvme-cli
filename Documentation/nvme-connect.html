@@ -756,7 +756,11 @@ nvme-connect(1) Manual Page
                 [--nr-io-queues=&lt;#&gt;       | -i &lt;#&gt;]
                 [--queue-size=&lt;#&gt;         | -Q &lt;#&gt;]
                 [--keep-alive-tmo=&lt;#&gt;     | -k &lt;#&gt;]
-                [--reconnect-delay=&lt;#&gt;    | -c &lt;#&gt;]</pre>
+                [--reconnect-delay=&lt;#&gt;    | -c &lt;#&gt;]
+                [--host-pdu-dgst=&lt;on|off&gt;     | -p &lt;on|off&gt; ]
+                [--host-data-dgst=&lt;on|off&gt;    | -d &lt;on|off&gt; ]
+                [--target-pdu-dgst=&lt;on|off&gt;   | -P &lt;on|off&gt; ]
+                [--target-data-dgst=&lt;on|off&gt;  | -D &lt;on|off&gt; ]</pre>
 <div class="attribution">
 </div></div>
 </div>
@@ -920,6 +924,50 @@ cellspacing="0" cellpadding="4">
 <p>
         Overrides the default delay (in seconds) before reconnect is attempted
         after a connect loss.
+</p>
+</dd>
+<dt class="hdlist1">
+-p <on|off>::
+</dt>
+<dt class="hdlist1">
+--host-pdu-dgst=<on|off>::
+</dt>
+<dd>
+<p>
+        Enable PDU header digest protection for host. Default: off.
+</p>
+</dd>
+<dt class="hdlist1">
+-d <on|off>
+</dt>
+<dt class="hdlist1">
+--host-data-dgst=<on|off>::
+</dt>
+<dd>
+<p>
+        Enable data digest protection for host. Default: off.
+</p>
+</dd>
+<dt class="hdlist1">
+-P <on|off>
+</dt>
+<dt class="hdlist1">
+--target-pdu-dgst=<on|off>::
+</dt>
+<dd>
+<p>
+        Enable PDU header digest protection for target. Default: off.
+</p>
+</dd>
+<dt class="hdlist1">
+-D <on|off>
+</dt>
+<dt class="hdlist1">
+--target-data-dgst=<on|off>::
+</dt>
+<dd>
+<p>
+        Enable data digest protection for target. Default: off.
 </p>
 </dd>
 </dl></div>
